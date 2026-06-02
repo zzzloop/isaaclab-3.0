@@ -1,6 +1,17 @@
 Changelog
 ---------
 
+0.5.1 (2026-06-02)
+~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Fixed the shipped CloudXR ``.env`` profiles to disable pose wait by default,
+  preventing CloudXR frame pacing from throttling teleoperation sessions after
+  frame-time spikes.
+
+
 0.5.0 (2026-05-20)
 ~~~~~~~~~~~~~~~~~~
 

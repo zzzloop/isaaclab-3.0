@@ -1,6 +1,16 @@
 Changelog
 ---------
 
+0.5.3 (2026-06-02)
+~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Changed the ``skrl`` optional dependency floor to ``2.1.0`` for
+  compatibility with ``warp-lang`` 1.13.
+
+
 0.5.2 (2026-05-08)
 ~~~~~~~~~~~~~~~~~~
 

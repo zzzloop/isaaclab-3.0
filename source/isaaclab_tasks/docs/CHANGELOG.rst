@@ -1,6 +1,41 @@
 Changelog
 ---------
 
+1.10.1 (2026-06-02)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added validation in :mod:`isaaclab_tasks.utils.sim_launcher` that raises a descriptive
+  error when an unsupported physics/renderer/visualizer combination is requested
+  (e.g. the kitless OVRTX renderer paired with Isaac Sim PhysX or the Kit visualizer),
+  pointing users at the correct preset instead of failing later with an opaque runtime error.
+
+Changed
+^^^^^^^
+
+* Changed the default number of environments for
+  ``Isaac-Navigation-3DObstacles-ARL-Robot-1-v0`` to ``1024``. Set
+  ``--num_envs`` or ``env.scene.num_envs`` to use a different value.
+
+Fixed
+^^^^^
+
+* Fixed kitless launch handling for explicit ``--viz none`` requests.
+* Fixed benchmark and environment scripts (``scripts/benchmarks/benchmark_{rsl_rl,rlgames,non_rl}.py``,
+  ``scripts/environments/{list_envs,random_agent,zero_agent,export_IODescriptors}.py``) failing with
+  ``gymnasium.error.NameNotFound`` for ``-Warp-v0`` task variants. Added the conditional
+  ``isaaclab_tasks_experimental`` import that the RL training scripts already use.
+* Fixed the default number of environments for the UR10e Deploy GearAssembly
+  tasks so their training configs use less GPU memory.
+* Reported a clear error when ``--visualizer kit`` is used with the
+  ``ovphysx`` preset, since OvPhysX cannot run alongside the Kit visualizer
+  in the same process.
+* Fixed DexSuite point-cloud sampling in Newton replicated scenes to read
+  object geometry from clone-plan source prims.
+
+
 1.10.0 (2026-05-20)
 ~~~~~~~~~~~~~~~~~~~
 

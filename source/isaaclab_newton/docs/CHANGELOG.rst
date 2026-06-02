@@ -1,6 +1,40 @@
 Changelog
 ---------
 
+0.13.0 (2026-06-02)
+~~~~~~~~~~~~~~~~~~~
+
+Added
+^^^^^
+
+* Added an HDR output (:attr:`~isaaclab.renderers.RenderBufferKind.RGB_HDR`) to :class:`~isaaclab_newton.renderers.NewtonWarpRenderer`, sourced from its native scene-linear color buffer.
+* Added internal :class:`~isaaclab.renderers.PpispPipeline` composition in :class:`~isaaclab_newton.renderers.NewtonWarpRenderer`: when :attr:`~isaaclab.sensors.camera.CameraCfg.isp_cfg` is set the renderer allocates its own HDR scratch tensor and dispatches the PPISP kernel into the camera's ``rgb`` / ``rgba`` output after each render.
+
+Fixed
+^^^^^
+
+* Fixed Newton visualizer camera image views and state updates for PhysX-backed simulations.
+* Fixed :meth:`~isaaclab_newton.physics.NewtonManager._backend_is_newton`
+  returning ``False`` when ``PhysicsManager._sim`` was unset but a
+  :class:`~isaaclab.sim.SimulationContext` instance existed. The scene-data
+  provider lookup now consistently falls back to
+  :meth:`~isaaclab.sim.SimulationContext.instance`, via a new
+  :meth:`~isaaclab_newton.physics.NewtonManager.get_scene_data_provider`
+  helper shared with :meth:`~isaaclab_newton.physics.NewtonManager.update_visualization_state`.
+* Fixed :class:`~isaaclab_newton.sensors.ContactSensor`, :class:`~isaaclab_newton.sensors.Imu`,
+  :class:`~isaaclab_newton.sensors.Pva`, and :class:`~isaaclab_newton.sensors.JointWrenchSensor`
+  returning stale pre-reset data when :meth:`~isaaclab.scene.InteractiveScene.reset` was
+  called inside an environment step without a subsequent physics step (e.g. inside
+  :meth:`~isaaclab.envs.ManagerBasedRLEnv._reset_idx`). Each sensor's ``reset()`` now marks
+  the reset envs as up to date after zeroing ``_data``, so an immediate read returns those
+  zeros rather than re-fetching a physics buffer that has not been stepped since the reset.
+* Fixed particle self-contact configuration in the Newton deformables demo to prevent inter-penetration.
+* Fixed Newton frame-view and ray-caster sensor resolution to use clone-plan
+  source paths and Newton model labels instead of cloned destination USD prims.
+* Fixed Newton Warp camera preparation to avoid requiring PPISP when camera ISP
+  is disabled.
+
+
 0.12.0 (2026-05-20)
 ~~~~~~~~~~~~~~~~~~~
 
