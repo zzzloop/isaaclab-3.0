@@ -113,6 +113,7 @@ EXTRAS_REQUIRE = {
         "isaaclab_ov",
         "isaaclab_ovphysx",
         "isaaclab_physx[newton]",
+        "isaaclab_ppisp",
         "isaaclab_rl[all]",
         "isaaclab_tasks",
         "isaaclab_tasks_experimental",
