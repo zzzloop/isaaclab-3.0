@@ -1,6 +1,15 @@
 Changelog
 ---------
 
+6.1.9 (2026-06-13)
+~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Prevented MARL adapter wrappers from raising destructor tracebacks when destroyed by setting their environment lifecycle state explicitly.
+
+
 6.1.8 (2026-06-12)
 ~~~~~~~~~~~~~~~~~~
 
