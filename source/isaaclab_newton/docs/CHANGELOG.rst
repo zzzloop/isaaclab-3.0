@@ -1,6 +1,16 @@
 Changelog
 ---------
 
+0.13.6 (2026-06-14)
+~~~~~~~~~~~~~~~~~~~
+
+Fixed
+^^^^^
+
+* Added an explicit ``pyglet>=2.1.6,<3`` dependency for Newton GL video
+  recording support.
+
+
 0.13.5 (2026-06-13)
 ~~~~~~~~~~~~~~~~~~~
 

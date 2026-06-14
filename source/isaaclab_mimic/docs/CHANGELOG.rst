@@ -1,6 +1,15 @@
 Changelog
 ---------
 
+1.3.2 (2026-06-14)
+~~~~~~~~~~~~~~~~~~
+
+Removed
+^^^^^^^
+
+* Removed the ``nvidia-srl-usd-to-urdf`` dependency now that Pink IK conversion uses Isaac Sim's URDF exporter.
+
+
 1.3.1 (2026-06-02)
 ~~~~~~~~~~~~~~~~~~
 

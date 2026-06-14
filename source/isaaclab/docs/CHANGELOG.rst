@@ -1,6 +1,22 @@
 Changelog
 ---------
 
+6.1.10 (2026-06-14)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Updated the ``newton`` extra installation message to list the Newton GL
+  viewer's ``pyglet`` dependency.
+
+Fixed
+^^^^^
+
+* Fixed SimulationContext reset ordering so initial visualizers are created before the timeline play event pump can invalidate freshly created PhysX tensor views.
+* Fixed Pink IK USD-to-URDF conversion to use Isaac Sim's URDF exporter instead of the unavailable ``nvidia.srl`` package.
+
+
 6.1.9 (2026-06-13)
 ~~~~~~~~~~~~~~~~~~
 
