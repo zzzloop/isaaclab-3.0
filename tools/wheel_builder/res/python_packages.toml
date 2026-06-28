@@ -25,7 +25,7 @@ pyproject.dependencies.all = [
     "warp-lang==1.13.0",
     "matplotlib>=3.10.3",
     # make sure this is consistent with isaac sim version
-    "pillow==12.1.1",
+    "pillow==12.2.0",
     "botocore",
     # livestream
     # range chosen to coexist with isaacsim 6.0 (isaacsim-kernel pulls fastapi==0.117.1 -> starlette<0.49.0)
@@ -84,7 +84,7 @@ pyproject.dependencies.all = [
 ]
 pyproject.optional-dependencies.all = [
     # Isaac Sim
-    { "isaacsim" = ["isaacsim[all,extscache]==6.0.0.1"] },
+    { "isaacsim" = ["isaacsim[all,extscache]==6.0.1.0"] },
     # ================================================================================
     # https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_newton/setup.py
     # ================================================================================

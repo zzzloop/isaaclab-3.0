@@ -36,7 +36,7 @@ INSTALL_REQUIRES = [
     "warp-lang==1.13.0",
     "matplotlib>=3.10.3",  # minimum version for Python 3.12 support
     # make sure this is consistent with isaac sim version
-    "pillow==12.1.1",
+    "pillow==12.2.0",
     # required by omni.replicator.core S3 backend
     "botocore",
     # livestream
@@ -102,9 +102,9 @@ PYTORCH_INDEX_URL = ["https://download.pytorch.org/whl/cu128"]
 # Use ``pip install isaaclab[isaacsim]`` to add Isaac Sim, or
 # ``pip install isaaclab[all]`` to pull in all sub-packages and extras.
 EXTRAS_REQUIRE = {
-    "isaacsim": ["isaacsim[all,extscache]==5.1.0"],
+    "isaacsim": ["isaacsim[all,extscache]==6.0.1.0"],
     "all": [
-        "isaacsim[all,extscache]==5.1.0",
+        "isaacsim[all,extscache]==6.0.1.0",
         "isaaclab_assets",
         "isaaclab_contrib",
         "isaaclab_experimental",
