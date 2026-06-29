@@ -1,6 +1,16 @@
 Changelog
 ---------
 
+6.1.13 (2026-06-29)
+~~~~~~~~~~~~~~~~~~~
+
+Changed
+^^^^^^^
+
+* Updated the Isaac Sim pip dependency to ``6.0.1.0`` and aligned the
+  ``pillow`` dependency with Isaac Sim by pinning ``pillow==12.2.0``.
+
+
 6.1.12 (2026-06-18)
 ~~~~~~~~~~~~~~~~~~~
 
