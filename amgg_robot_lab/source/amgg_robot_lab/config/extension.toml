@@ -1,0 +1,20 @@
+[package]
+version = "0.1.0"
+category = "isaaclab"
+readme = "README.md"
+title = "AMGG Robot Lab"
+author = "AMGG"
+maintainer = "AMGG"
+description = "Custom AMGG robot simulation, teleoperation, recording, and deployment extension"
+repository = ""
+keywords = ["amgg", "isaaclab", "teleoperation", "robotics"]
+
+[dependencies]
+"isaaclab" = {}
+"isaaclab_assets" = {}
+"isaaclab_tasks" = {}
+"isaaclab_teleop" = {}
+
+[[python.module]]
+name = "amgg_robot_lab"
+
