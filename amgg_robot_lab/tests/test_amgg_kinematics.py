@@ -15,6 +15,20 @@ from amgg_robot_lab.kinematics import IkTarget, get_amgg_kinematics
 class TestAmggKinematics(unittest.TestCase):
     """Validate analytical derivatives and the dual-arm IK solver."""
 
+    def test_tcp_offsets_match_frame_contract(self) -> None:
+        model = get_amgg_kinematics()
+        positions = dict(AMGG_HOME_POSITIONS)
+        frame_pairs = (
+            (AMGG_FRAMES.left_tcp_parent_link, AMGG_FRAMES.left_tcp_link, AMGG_FRAMES.left_tcp_offset_m),
+            (AMGG_FRAMES.right_tcp_parent_link, AMGG_FRAMES.right_tcp_link, AMGG_FRAMES.right_tcp_offset_m),
+        )
+        for parent_link, tcp_link, expected_offset in frame_pairs:
+            parent_transform = model.forward(parent_link, positions)
+            tcp_transform = model.forward(tcp_link, positions)
+            relative_transform = np.linalg.inv(parent_transform) @ tcp_transform
+            self.assertTrue(np.allclose(relative_transform[:3, 3], expected_offset, atol=1e-12))
+            self.assertTrue(np.allclose(relative_transform[:3, :3], np.eye(3), atol=1e-12))
+
     def test_analytic_jacobian_matches_finite_difference(self) -> None:
         model = get_amgg_kinematics()
         names = AMGG_IK_JOINT_NAMES

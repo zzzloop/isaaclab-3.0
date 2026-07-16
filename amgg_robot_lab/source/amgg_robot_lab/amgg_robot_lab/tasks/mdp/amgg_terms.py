@@ -13,6 +13,8 @@ import isaaclab.utils.math as math_utils
 import torch
 from isaaclab.managers import SceneEntityCfg
 
+from amgg_robot_lab.contracts import AMGG_FRAMES
+
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
@@ -34,10 +36,29 @@ def _settled(env: ManagerBasedRLEnv, name: str, max_speed: float) -> torch.Tenso
 def body_pose_env(
     env: ManagerBasedRLEnv, link_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
-    """Return one body pose in the environment frame."""
+    """Return one rigid-body or virtual TCP pose in the environment frame."""
     robot: Articulation = env.scene[asset_cfg.name]
-    body_id = robot.data.body_names.index(link_name)
-    pose = robot.data.body_link_pose_w.torch[:, body_id].clone()
+    if link_name in robot.data.body_names:
+        body_id = robot.data.body_names.index(link_name)
+        pose = robot.data.body_link_pose_w.torch[:, body_id].clone()
+    else:
+        tcp_frames = {
+            AMGG_FRAMES.left_tcp_link: (AMGG_FRAMES.left_tcp_parent_link, AMGG_FRAMES.left_tcp_offset_m),
+            AMGG_FRAMES.right_tcp_link: (AMGG_FRAMES.right_tcp_parent_link, AMGG_FRAMES.right_tcp_offset_m),
+        }
+        if link_name not in tcp_frames:
+            raise ValueError(f"Body '{link_name}' is unavailable. Available bodies: {robot.data.body_names}")
+        parent_link, offset_m = tcp_frames[link_name]
+        if parent_link not in robot.data.body_names:
+            raise ValueError(
+                f"TCP parent body '{parent_link}' is unavailable for '{link_name}'. "
+                f"Available bodies: {robot.data.body_names}"
+            )
+        parent_id = robot.data.body_names.index(parent_link)
+        parent_pose = robot.data.body_link_pose_w.torch[:, parent_id]
+        offset = parent_pose.new_tensor(offset_m).expand(env.num_envs, -1)
+        position, quaternion = math_utils.combine_frame_transforms(parent_pose[:, :3], parent_pose[:, 3:7], offset)
+        pose = torch.cat((position, quaternion), dim=-1)
     pose[:, :3] -= env.scene.env_origins
     return pose
 
