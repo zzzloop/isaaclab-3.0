@@ -14,6 +14,24 @@ from pathlib import Path
 class TestAmggDevelopmentImport(unittest.TestCase):
     """Ensure the outer project directory does not shadow the source package."""
 
+    def test_setuptools_discovers_source_packages(self) -> None:
+        from setuptools import find_packages
+
+        package_root = Path(__file__).resolve().parents[1] / "source" / "amgg_robot_lab"
+        discovered = set(find_packages(where=package_root))
+        required = {
+            "amgg_robot_lab",
+            "amgg_robot_lab.assets",
+            "amgg_robot_lab.contracts",
+            "amgg_robot_lab.kinematics",
+            "amgg_robot_lab.real",
+            "amgg_robot_lab.recording",
+            "amgg_robot_lab.tasks",
+            "amgg_robot_lab.tasks.mdp",
+            "amgg_robot_lab.teleop",
+        }
+        self.assertTrue(required.issubset(discovered), f"Missing packages: {sorted(required - discovered)}")
+
     def test_assets_import_from_repository_root(self) -> None:
         repository_root = Path(__file__).resolve().parents[2]
         result = subprocess.run(

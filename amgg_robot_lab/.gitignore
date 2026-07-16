@@ -9,3 +9,6 @@ dist/
 datasets/
 outputs/
 
+# The repository-level ``**/__*`` rule must not hide package initializers in
+# this external extension.
+!**/__init__.py
