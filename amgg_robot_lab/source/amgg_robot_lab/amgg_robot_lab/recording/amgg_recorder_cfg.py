@@ -3,9 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Isaac Lab recorder-manager configuration entry point for AMGG episodes."""
+"""Isaac Lab recorder configuration used by the official demo recorder."""
 
 
 def build_amgg_recorder_cfg():
-    """Build an AMGG recorder configuration with explicit feature ordering."""
-    raise RuntimeError("AMGG recorder configuration is pending the dataset schema.")
+    """Build the recorder used by ``scripts/tools/record_demos.py``."""
+    from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
+
+    return ActionStateRecorderManagerCfg()

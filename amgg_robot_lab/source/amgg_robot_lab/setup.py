@@ -23,6 +23,7 @@ setup(
     keywords=EXTENSION_METADATA["package"]["keywords"],
     packages=find_packages(),
     include_package_data=True,
+    package_data={"amgg_robot_lab": ["assets/data/**/*"]},
     python_requires=">=3.12",
     license="BSD-3-Clause",
     zip_safe=False,
