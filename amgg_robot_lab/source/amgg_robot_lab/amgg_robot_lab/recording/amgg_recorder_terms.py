@@ -3,9 +3,25 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Custom recorder terms for canonical AMGG state, command, and synchronized images."""
+"""Names of the built-in recorder terms expected in every AMGG episode."""
+
+AMGG_RECORDED_HDF5_KEYS = (
+    "actions",
+    "processed_actions",
+    "obs/robot_joint_pos",
+    "obs/robot_joint_vel",
+    "obs/left_tcp_pose",
+    "obs/right_tcp_pose",
+    "obs/object_state",
+    "obs/goal",
+    "obs/progress",
+    "obs/image_head",
+    "obs/image_left_wrist",
+    "obs/image_right_wrist",
+    "obs/image_overview",
+)
 
 
-def build_amgg_recorder_terms():
-    """Build recorder terms after the robot and camera contracts are populated."""
-    raise RuntimeError("AMGG recorder terms are pending joint and camera contracts.")
+def build_amgg_recorder_terms() -> tuple[str, ...]:
+    """Return the HDF5 datasets produced by official AMGG recording."""
+    return AMGG_RECORDED_HDF5_KEYS

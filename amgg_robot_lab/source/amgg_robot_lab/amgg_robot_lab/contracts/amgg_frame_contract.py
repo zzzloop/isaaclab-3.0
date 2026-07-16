@@ -12,12 +12,12 @@ from dataclasses import dataclass
 class AmggFrameContract:
     """Required robot frames shared by FK, IK, simulation, and hardware."""
 
-    base_link: str = ""
-    torso_link: str = ""
-    left_wrist_link: str = ""
-    right_wrist_link: str = ""
-    left_tcp_link: str = ""
-    right_tcp_link: str = ""
+    base_link: str = "base_link"
+    torso_link: str = "Body0422_Link"
+    left_wrist_link: str = "ArmL07Output_Link"
+    right_wrist_link: str = "ArmR07Output_Link"
+    left_tcp_link: str = "left_tcp_link"
+    right_tcp_link: str = "right_tcp_link"
 
     def validate(self) -> None:
         """Validate that all required frame names are present and unique."""

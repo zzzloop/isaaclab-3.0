@@ -8,10 +8,15 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from amgg_robot_lab.contracts import AMGG_CONTROLLED_JOINT_NAMES, AMGG_HOME_POSITIONS, AMGG_OBSERVED_JOINT_NAMES
+
 
 @dataclass(frozen=True, slots=True)
 class AmggRobotState:
-    """One measured real-robot state sample."""
+    """One measured real-robot state sample.
+
+    Joint values use [rad] for revolute joints and [m] for prismatic joints.
+    """
 
     timestamp_s: float
     joint_positions_rad: tuple[float, ...]
@@ -38,3 +43,41 @@ class AmggRobotBackend(Protocol):
 
     def disconnect(self) -> None:
         """Close the robot connection."""
+
+
+class AmggDryRunBackend:
+    """Deterministic no-motion backend for integration and safety tests."""
+
+    def __init__(self) -> None:
+        self._connected = False
+        self._enabled = False
+        self._timestamp_s = 0.0
+        self._positions = tuple(AMGG_HOME_POSITIONS[name] for name in AMGG_OBSERVED_JOINT_NAMES)
+
+    def connect(self) -> None:
+        self._connected = True
+
+    def enable(self) -> None:
+        if not self._connected:
+            raise RuntimeError("Connect the AMGG dry-run backend before enabling it.")
+        self._enabled = True
+
+    def read_state(self) -> AmggRobotState:
+        if not self._connected:
+            raise RuntimeError("AMGG dry-run backend is disconnected.")
+        return AmggRobotState(self._timestamp_s, self._positions, (0.0,) * len(self._positions))
+
+    def send_joint_position_targets(self, command_rad: tuple[float, ...], timestamp_s: float) -> None:
+        if not self._enabled:
+            raise RuntimeError("AMGG dry-run motion is not enabled.")
+        if len(command_rad) != len(AMGG_CONTROLLED_JOINT_NAMES):
+            raise ValueError("AMGG dry-run command does not follow the 21-D ABI.")
+        self._positions = command_rad + self._positions[len(command_rad) :]
+        self._timestamp_s = timestamp_s
+
+    def stop(self) -> None:
+        self._enabled = False
+
+    def disconnect(self) -> None:
+        self.stop()
+        self._connected = False
