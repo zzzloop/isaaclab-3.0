@@ -1,5 +1,7 @@
 # AMGG Robot Lab
 
+[中文配置与操作说明](README_CN.md)
+
 `amgg_robot_lab` is the isolated project scaffold for the AMGG robot, custom Isaac Lab tasks,
 PICO teleoperation, demonstration recording, LeRobot conversion, and a future real-robot backend.
 
@@ -44,4 +46,3 @@ cd ~/zzk_data/amgg_robot_lab
 4. Base, torso, wrist, TCP, gripper, and camera-parent link names.
 5. Fixed, wheeled, or floating-base semantics.
 6. Real-robot SDK or ROS 2 command/state interfaces.
-
