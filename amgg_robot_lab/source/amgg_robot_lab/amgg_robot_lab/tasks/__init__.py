@@ -27,6 +27,16 @@ _register("Isaac-AMGG-BimanualLift-v0", "AmggBimanualLiftEnvCfg")
 _register("Isaac-AMGG-Handover-v0", "AmggHandoverEnvCfg")
 _register("Isaac-AMGG-Sort-v0", "AmggSortEnvCfg")
 
+
+def register_tasks() -> None:
+    """Provide a post-AppLauncher callback for AMGG task registration.
+
+    Importing this module performs the Gym registration. The callable exists so
+    official Isaac Lab applications can load the module through their
+    ``--external_callback`` argument after Kit has initialized USD schemas.
+    """
+
+
 from .amgg_task_specs import AMGG_TASK_SPEC_BY_ID, AMGG_TASK_SPEC_BY_SLUG, AMGG_TASK_SPECS, AmggTaskSpec  # noqa: E402
 
-__all__ = ["AMGG_TASK_SPEC_BY_ID", "AMGG_TASK_SPEC_BY_SLUG", "AMGG_TASK_SPECS", "AmggTaskSpec"]
+__all__ = ["AMGG_TASK_SPEC_BY_ID", "AMGG_TASK_SPEC_BY_SLUG", "AMGG_TASK_SPECS", "AmggTaskSpec", "register_tasks"]
