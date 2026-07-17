@@ -8,6 +8,7 @@
 from isaaclab.envs.mdp import *  # noqa: F403
 
 from .amgg_actions import AmggPinkInverseKinematicsAction, AmggPinkInverseKinematicsActionCfg
+from .amgg_g1_terms import *  # noqa: F403
 from .amgg_terms import *  # noqa: F403
 
 __all__ = ["AmggPinkInverseKinematicsAction", "AmggPinkInverseKinematicsActionCfg"]

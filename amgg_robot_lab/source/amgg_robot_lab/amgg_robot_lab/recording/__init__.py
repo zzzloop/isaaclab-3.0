@@ -15,6 +15,7 @@ from .amgg_dataset_schema import (
     AmggDatasetSpec,
     make_amgg_dataset_spec,
 )
+from .amgg_g1_dataset_schema import AmggG1DatasetSpec, make_amgg_g1_dataset_spec
 
 __all__ = [
     "AMGG_ACTION_KEY",
@@ -23,6 +24,8 @@ __all__ = [
     "AMGG_OBSERVATION_STATE_KEY",
     "AMGG_SCHEMA_VERSION",
     "AMGG_TCP_STATE_KEY",
+    "AmggG1DatasetSpec",
     "AmggDatasetSpec",
+    "make_amgg_g1_dataset_spec",
     "make_amgg_dataset_spec",
 ]
