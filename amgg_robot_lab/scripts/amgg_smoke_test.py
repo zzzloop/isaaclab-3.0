@@ -6,6 +6,7 @@
 """Launch an AMGG task and hold the FK-derived idle action for finite steps."""
 
 import argparse
+from pathlib import Path
 
 from isaaclab.app import AppLauncher
 
@@ -13,6 +14,12 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--task", default="Isaac-AMGG-PickPlace-v0")
 parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument("--num_steps", type=int, default=240)
+parser.add_argument(
+    "--camera_output_dir",
+    type=str,
+    default=None,
+    help="Optional directory in which to save the first environment's front and overview RGB images.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -25,6 +32,20 @@ import gymnasium as gym  # noqa: E402
 import isaaclab_tasks  # noqa: E402, F401
 import torch  # noqa: E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
+from PIL import Image  # noqa: E402
+
+
+def save_camera_images(policy: dict[str, torch.Tensor], output_dir: str) -> None:
+    """Save the first environment's RGB observations as PNG files."""
+    destination = Path(output_dir).expanduser().resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+    for observation_name, file_name in (
+        ("image_front", "front.png"),
+        ("image_overview", "overview.png"),
+    ):
+        image = policy[observation_name][0].detach().cpu().numpy()
+        Image.fromarray(image).save(destination / file_name)
+        print(f"Saved camera image: {destination / file_name}", flush=True)
 
 
 def main() -> None:
@@ -49,6 +70,8 @@ def main() -> None:
                 print(f"AMGG smoke progress: {step}/{args_cli.num_steps}", flush=True)
         print(f"AMGG smoke test passed: task={args_cli.task}, steps={args_cli.num_steps}")
         print(f"action_shape={env.action_space.shape}, policy_keys={sorted(observation['policy'])}")
+        if args_cli.camera_output_dir:
+            save_camera_images(observation["policy"], args_cli.camera_output_dir)
     finally:
         env.close()
 
