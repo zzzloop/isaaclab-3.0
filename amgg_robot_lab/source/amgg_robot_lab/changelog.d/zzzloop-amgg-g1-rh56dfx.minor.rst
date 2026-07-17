@@ -15,3 +15,5 @@ Changed
   sampling rate.
 * Changed dynamic-object contact properties and masses to prevent excessive
   depenetration impulses while preserving gravity and stable grasping.
+* Changed all G1 task objects, goals, and fixtures to stay inside the observed
+  0.42 m forward-reach limit with margin for randomized resets.

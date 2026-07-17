@@ -29,6 +29,15 @@ from amgg_robot_lab.contracts import (
 )
 
 from . import mdp
+from .amgg_g1_workspace import (
+    AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M,
+    AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M,
+    AMGG_G1_TASK_LAYOUTS,
+)
+
+_CLUTTER_LAYOUT = AMGG_G1_TASK_LAYOUTS["clutter_transfer"]
+_BIMANUAL_LAYOUT = AMGG_G1_TASK_LAYOUTS["bimanual_reorient"]
+_PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["precision_insert"]
 
 
 def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> dict:
@@ -162,20 +171,20 @@ class AmggG1ClutterTransferSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.24, 0.43, 1.035)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_CLUTTER_LAYOUT["object"]),
         spawn=sim_utils.CuboidCfg(size=(0.070, 0.070, 0.070), **_dynamic_material((0.95, 0.28, 0.04))),
     )
     distractor_a = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/DistractorA",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.05, 0.46, 1.035)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_CLUTTER_LAYOUT["distractor_a"]),
         spawn=sim_utils.CuboidCfg(size=(0.065, 0.065, 0.070), **_dynamic_material((0.08, 0.35, 0.92))),
     )
     distractor_b = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/DistractorB",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.10, 0.40, 1.04)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_CLUTTER_LAYOUT["distractor_b"]),
         spawn=sim_utils.CylinderCfg(radius=0.035, height=0.080, **_dynamic_material((0.88, 0.78, 0.08))),
     )
-    goal = _goal_marker((0.24, 0.62, 1.003), (0.17, 0.17, 0.008), (0.08, 0.85, 0.22))
+    goal = _goal_marker(_CLUTTER_LAYOUT["goal_marker"], (0.17, 0.17, 0.008), (0.08, 0.85, 0.22))
 
 
 @configclass
@@ -184,16 +193,19 @@ class AmggG1BimanualReorientSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.42, 1.035)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_BIMANUAL_LAYOUT["object"]),
         spawn=sim_utils.CuboidCfg(size=(0.48, 0.055, 0.055), **_dynamic_material((0.06, 0.32, 0.95), 0.40)),
     )
     left_support = _static_box(
-        "{ENV_REGEX_NS}/LeftSupport", (-0.19, 0.68, 1.055), (0.085, 0.13, 0.11), (0.16, 0.70, 0.78)
+        "{ENV_REGEX_NS}/LeftSupport", _BIMANUAL_LAYOUT["left_support"], (0.085, 0.13, 0.11), (0.16, 0.70, 0.78)
     )
     right_support = _static_box(
-        "{ENV_REGEX_NS}/RightSupport", (0.19, 0.68, 1.055), (0.085, 0.13, 0.11), (0.16, 0.70, 0.78)
+        "{ENV_REGEX_NS}/RightSupport",
+        _BIMANUAL_LAYOUT["right_support"],
+        (0.085, 0.13, 0.11),
+        (0.16, 0.70, 0.78),
     )
-    goal = _goal_marker((0.0, 0.68, 1.115), (0.52, 0.09, 0.008), (0.10, 0.85, 0.88))
+    goal = _goal_marker(_BIMANUAL_LAYOUT["goal_marker"], (0.52, 0.09, 0.008), (0.10, 0.85, 0.88))
 
 
 @configclass
@@ -202,16 +214,25 @@ class AmggG1PrecisionInsertSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.24, 0.43, 1.07)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_PRECISION_LAYOUT["object"]),
         spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.14), **_dynamic_material((0.96, 0.72, 0.05), 0.20)),
     )
-    guide_left = _static_box("{ENV_REGEX_NS}/GuideLeft", (0.178, 0.62, 1.055), (0.025, 0.105, 0.11), (0.55, 0.12, 0.75))
-    guide_right = _static_box(
-        "{ENV_REGEX_NS}/GuideRight", (0.262, 0.62, 1.055), (0.025, 0.105, 0.11), (0.55, 0.12, 0.75)
+    guide_left = _static_box(
+        "{ENV_REGEX_NS}/GuideLeft", _PRECISION_LAYOUT["guide_left"], (0.025, 0.105, 0.11), (0.55, 0.12, 0.75)
     )
-    guide_near = _static_box("{ENV_REGEX_NS}/GuideNear", (0.22, 0.578, 1.055), (0.060, 0.025, 0.11), (0.55, 0.12, 0.75))
-    guide_far = _static_box("{ENV_REGEX_NS}/GuideFar", (0.22, 0.662, 1.055), (0.060, 0.025, 0.11), (0.55, 0.12, 0.75))
-    goal = _goal_marker((0.22, 0.62, 1.003), (0.055, 0.055, 0.008), (0.72, 0.18, 0.90))
+    guide_right = _static_box(
+        "{ENV_REGEX_NS}/GuideRight",
+        _PRECISION_LAYOUT["guide_right"],
+        (0.025, 0.105, 0.11),
+        (0.55, 0.12, 0.75),
+    )
+    guide_near = _static_box(
+        "{ENV_REGEX_NS}/GuideNear", _PRECISION_LAYOUT["guide_near"], (0.060, 0.025, 0.11), (0.55, 0.12, 0.75)
+    )
+    guide_far = _static_box(
+        "{ENV_REGEX_NS}/GuideFar", _PRECISION_LAYOUT["guide_far"], (0.060, 0.025, 0.11), (0.55, 0.12, 0.75)
+    )
+    goal = _goal_marker(_PRECISION_LAYOUT["goal_marker"], (0.055, 0.055, 0.008), (0.72, 0.18, 0.90))
 
 
 @configclass
@@ -303,7 +324,11 @@ class AmggG1EventsCfg:
         func=base_mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.035, 0.035), "y": (-0.035, 0.035), "yaw": (-0.25, 0.25)},
+            "pose_range": {
+                "x": (-AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M, AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M),
+                "y": (-AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M, AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M),
+                "yaw": (-0.25, 0.25),
+            },
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
         },

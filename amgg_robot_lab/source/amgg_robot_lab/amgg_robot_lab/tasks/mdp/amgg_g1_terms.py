@@ -12,15 +12,16 @@ from typing import TYPE_CHECKING
 import isaaclab.utils.math as math_utils
 import torch
 
+from ..amgg_g1_workspace import AMGG_G1_TASK_LAYOUTS
+
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+_GOAL_TOLERANCES_M = {"clutter_transfer": 0.075, "bimanual_reorient": 0.045, "precision_insert": 0.015}
 _GOALS = {
-    "clutter_transfer": (0.24, 0.62, 1.035, 0.075),
-    "bimanual_reorient": (0.00, 0.68, 1.115, 0.045),
-    "precision_insert": (0.22, 0.62, 1.070, 0.015),
+    task_slug: (*layout["goal"], _GOAL_TOLERANCES_M[task_slug]) for task_slug, layout in AMGG_G1_TASK_LAYOUTS.items()
 }
 
 
