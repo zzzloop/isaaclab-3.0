@@ -21,10 +21,14 @@ def validate_contact_stability_source(source: str) -> None:
         "object contact margin": "contact_offset=0.005",
         "object contact impulse": "max_contact_impulse=2.0",
         "robot contact override": "robot: ArticulationCfg = _contact_stable_robot()",
+        "official scene instance": "ObjectTableSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=True)",
+        "instance robot copy": "official_scene.robot.copy()",
     }
     missing = [name for name, setting in required_settings.items() if setting not in source]
     if missing:
         raise AssertionError(f"Missing contact-stability settings: {missing}")
+    if "ObjectTableSceneCfg.robot" in source:
+        raise AssertionError("configclass fields must be read from an instance, not the scene class")
 
 
 class TestAmggG1PhysicsConfig(unittest.TestCase):

@@ -58,7 +58,11 @@ def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> 
 
 def _contact_stable_robot() -> ArticulationCfg:
     """Return the official G1 with bounded drives and stronger contact solving."""
-    robot = ObjectTableSceneCfg.robot.copy()
+    # ``configclass`` fields are instance attributes.  Instantiating the
+    # official scene also preserves its robot initial state without duplicating
+    # the upstream joint configuration here.
+    official_scene = ObjectTableSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=True)
+    robot = official_scene.robot.copy()
     robot.spawn.rigid_props.max_linear_velocity = 3.0
     robot.spawn.rigid_props.max_angular_velocity = 360.0
     robot.spawn.rigid_props.max_depenetration_velocity = 0.5
