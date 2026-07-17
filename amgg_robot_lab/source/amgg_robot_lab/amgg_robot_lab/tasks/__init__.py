@@ -41,6 +41,21 @@ _register(
     "AmggG1PrecisionInsertEnvCfg",
     module_name="amgg_g1_manipulation_env_cfg",
 )
+_register(
+    "Isaac-AMGG-G1-ClutterTransfer-XR-v0",
+    "AmggG1ClutterTransferXrEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
+_register(
+    "Isaac-AMGG-G1-BimanualReorient-XR-v0",
+    "AmggG1BimanualReorientXrEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
+_register(
+    "Isaac-AMGG-G1-PrecisionInsert-XR-v0",
+    "AmggG1PrecisionInsertXrEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
 
 
 def register_tasks() -> None:

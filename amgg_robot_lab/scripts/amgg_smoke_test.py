@@ -8,8 +8,10 @@
 import argparse
 from pathlib import Path
 
+from amgg_gpu import configure_preferred_gpu
 from isaaclab.app import AppLauncher
 
+configure_preferred_gpu()
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--task", default="Isaac-AMGG-PickPlace-v0")
 parser.add_argument("--num_envs", type=int, default=1)

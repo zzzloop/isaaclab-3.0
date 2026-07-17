@@ -71,13 +71,16 @@ Isaac Sim/PhysX/Pink/OpenXR 运行时验收。
 
 ## 4. 按顺序验收三个场景
 
-服务器有问题的物理 3 号卡不要暴露给进程。要在服务器桌面看到 Kit 窗口并同时使用 PICO，
-优先使用显示连接的逻辑 `cuda:0`：
+AMGG 的三个仿真入口会在 Isaac Sim 启动前读取 `nvidia-smi`，默认只暴露物理 0、1、2 号卡，
+并优先把物理 2 号卡（第三张卡）映射到 CUDA、Kit 和 CloudXR 的同一个逻辑序号。这样可避开
+有问题的物理 3 号卡，并减少跨 GPU 显存复制。启动前建议清除旧的手工设置：
 
 ```bash
-export CUDA_DEVICE_ORDER=PCI_BUS_ID
-export CUDA_VISIBLE_DEVICES=0,1,2
+unset CUDA_VISIBLE_DEVICES NV_GPU_INDEX
 ```
+
+启动日志应出现 `[AMGG] Preferred physical GPU 2 ...`。临时改用物理 1 号卡可执行
+`AMGG_PREFERRED_GPU=1 <启动命令>`；显式传入 `--device` 会关闭自动选择并保留操作者设置。
 
 先跑第一个场景 240 步并查看模型、桌面、相机和接触传感器是否正常：
 
@@ -87,7 +90,6 @@ export CUDA_VISIBLE_DEVICES=0,1,2
   --num_envs 1 \
   --num_steps 240 \
   --enable_cameras \
-  --device cuda:0 \
   --visualizer kit
 ```
 
@@ -113,16 +115,17 @@ Isaac-AMGG-G1-PrecisionInsert-v0
 
 ```bash
 ./isaaclab.sh -p amgg_robot_lab/scripts/amgg_teleop.py \
-  --task Isaac-AMGG-G1-ClutterTransfer-v0 \
+  --task Isaac-AMGG-G1-ClutterTransfer-XR-v0 \
   --visualizer kit \
-  --device cuda:0 \
   --xr \
   --num_envs 1
 ```
 
+`-XR-v0` 任务使用 60 Hz 控制和渲染循环；普通 `-v0` 任务保持原来的 30 Hz 数据验收配置。
 该入口直接使用官方 G1 Inspire PICO pipeline。纯遥操模式会由官方脚本暂时移除相机观测，
 以降低 XR 延迟；这不改变录制环境的相机 schema。先确认腕部方向、左右手、recenter 和手指
-开合，再进入录制。
+开合，再进入录制。XR 已连接并确认可控后，可把渲染器切换为 `RTX - Minimal`，并把 XR
+Render Resolution Multiplier 调到 `0.8`；不要在 XR 建立连接前切换。
 
 ## 6. 自动判定并录制 HDF5
 
@@ -131,14 +134,13 @@ Isaac-AMGG-G1-PrecisionInsert-v0
 ```bash
 mkdir -p datasets
 ./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
-  --task Isaac-AMGG-G1-ClutterTransfer-v0 \
+  --task Isaac-AMGG-G1-ClutterTransfer-XR-v0 \
   --visualizer kit \
-  --device cuda:0 \
   --xr \
   --enable_cameras \
   --num_demos 1 \
   --num_success_steps 12 \
-  --step_hz 30 \
+  --step_hz 60 \
   --dataset_file ./datasets/amgg_g1_clutter_transfer.hdf5
 ```
 

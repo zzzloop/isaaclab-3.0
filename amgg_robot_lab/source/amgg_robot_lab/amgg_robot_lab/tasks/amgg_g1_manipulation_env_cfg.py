@@ -31,14 +31,25 @@ from amgg_robot_lab.contracts import (
 from . import mdp
 
 
-def _dynamic_material(color: tuple[float, float, float], mass: float = 0.10) -> dict:
+def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> dict:
     return {
         "visual_material": sim_utils.PreviewSurfaceCfg(diffuse_color=color, roughness=0.65),
-        "physics_material": sim_utils.RigidBodyMaterialCfg(static_friction=1.15, dynamic_friction=0.9),
+        "physics_material": sim_utils.RigidBodyMaterialCfg(
+            static_friction=1.15,
+            dynamic_friction=0.9,
+            restitution=0.0,
+        ),
         "rigid_props": sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            linear_damping=0.08,
+            angular_damping=0.15,
+            max_linear_velocity=3.0,
+            max_angular_velocity=720.0,
             solver_position_iteration_count=16,
-            solver_velocity_iteration_count=4,
-            max_depenetration_velocity=2.0,
+            solver_velocity_iteration_count=8,
+            max_depenetration_velocity=0.25,
+            max_contact_impulse=0.5,
+            enable_gyroscopic_forces=True,
         ),
         "collision_props": sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
         "mass_props": sim_utils.MassPropertiesCfg(mass=mass),
@@ -174,7 +185,7 @@ class AmggG1BimanualReorientSceneCfg(AmggG1BaseSceneCfg):
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.42, 1.035)),
-        spawn=sim_utils.CuboidCfg(size=(0.48, 0.055, 0.055), **_dynamic_material((0.06, 0.32, 0.95), 0.16)),
+        spawn=sim_utils.CuboidCfg(size=(0.48, 0.055, 0.055), **_dynamic_material((0.06, 0.32, 0.95), 0.40)),
     )
     left_support = _static_box(
         "{ENV_REGEX_NS}/LeftSupport", (-0.19, 0.68, 1.055), (0.085, 0.13, 0.11), (0.16, 0.70, 0.78)
@@ -192,7 +203,7 @@ class AmggG1PrecisionInsertSceneCfg(AmggG1BaseSceneCfg):
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
         init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.24, 0.43, 1.07)),
-        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.14), **_dynamic_material((0.96, 0.72, 0.05), 0.08)),
+        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.14), **_dynamic_material((0.96, 0.72, 0.05), 0.20)),
     )
     guide_left = _static_box("{ENV_REGEX_NS}/GuideLeft", (0.178, 0.62, 1.055), (0.025, 0.105, 0.11), (0.55, 0.12, 0.75))
     guide_right = _static_box(
@@ -380,3 +391,27 @@ class AmggG1PrecisionInsertEnvCfg(AmggG1BaseEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.episode_length_s = 50.0
+
+
+class _AmggG1XrTimingMixin:
+    """Use a 60 Hz control/render loop for lower-latency XR teleoperation."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.decimation = 2
+        self.sim.render_interval = 2
+
+
+@configclass
+class AmggG1ClutterTransferXrEnvCfg(_AmggG1XrTimingMixin, AmggG1ClutterTransferEnvCfg):
+    """Low-latency XR variant of the clutter-transfer task."""
+
+
+@configclass
+class AmggG1BimanualReorientXrEnvCfg(_AmggG1XrTimingMixin, AmggG1BimanualReorientEnvCfg):
+    """Low-latency XR variant of the bimanual-reorientation task."""
+
+
+@configclass
+class AmggG1PrecisionInsertXrEnvCfg(_AmggG1XrTimingMixin, AmggG1PrecisionInsertEnvCfg):
+    """Low-latency XR variant of the precision-insertion task."""
