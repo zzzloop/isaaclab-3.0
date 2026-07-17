@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import isaaclab.envs.mdp as base_mdp
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -45,42 +45,15 @@ def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> 
             angular_damping=0.15,
             max_linear_velocity=3.0,
             max_angular_velocity=720.0,
-            solver_position_iteration_count=24,
+            solver_position_iteration_count=16,
             solver_velocity_iteration_count=8,
-            max_depenetration_velocity=0.5,
-            max_contact_impulse=2.0,
+            max_depenetration_velocity=0.25,
+            max_contact_impulse=0.5,
             enable_gyroscopic_forces=True,
         ),
-        "collision_props": sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+        "collision_props": sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
         "mass_props": sim_utils.MassPropertiesCfg(mass=mass),
     }
-
-
-def _contact_stable_robot() -> ArticulationCfg:
-    """Return the official G1 with bounded drives and stronger contact solving."""
-    # ``configclass`` fields are instance attributes.  Instantiating the
-    # official scene also preserves its robot initial state without duplicating
-    # the upstream joint configuration here.
-    official_scene = ObjectTableSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=True)
-    robot = official_scene.robot.copy()
-    robot.spawn.rigid_props.max_linear_velocity = 3.0
-    robot.spawn.rigid_props.max_angular_velocity = 360.0
-    robot.spawn.rigid_props.max_depenetration_velocity = 0.5
-    robot.spawn.collision_props = sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0)
-    robot.spawn.articulation_props.solver_position_iteration_count = 16
-    robot.spawn.articulation_props.solver_velocity_iteration_count = 8
-
-    # ``velocity_limit`` is intentionally ignored for implicit actuators. Use
-    # the PhysX solver limit so XR target jumps cannot tunnel through props.
-    arms = robot.actuators["arms"]
-    arms.effort_limit = None
-    arms.effort_limit_sim = 80.0
-    arms.velocity_limit = None
-    arms.velocity_limit_sim = 4.0
-    hands = robot.actuators["hands"]
-    hands.velocity_limit = None
-    hands.velocity_limit_sim = 5.0
-    return robot
 
 
 def _static_box(
@@ -131,8 +104,6 @@ def _camera(prim_path: str, position, rotation) -> CameraCfg:
 @configclass
 class AmggG1BaseSceneCfg(ObjectTableSceneCfg):
     """Official fixed-base G1 with a clean table, RGB cameras, and finger contacts."""
-
-    robot: ArticulationCfg = _contact_stable_robot()
 
     # Replace the inherited warehouse packing-table USD.  Its trays and crates
     # occlude task objects and make controlled visual-domain studies difficult.
@@ -427,12 +398,8 @@ class _AmggG1XrTimingMixin:
 
     def __post_init__(self):
         super().__post_init__()
-        # Keep the 60 Hz control/render rate while doubling contact substeps.
-        # GPU PhysX does not support scene-level sweep CCD, so 240 Hz physics
-        # plus bounded articulation drives is the robust tunneling safeguard.
-        self.sim.dt = 1.0 / 240.0
-        self.decimation = 4
-        self.sim.render_interval = 4
+        self.decimation = 2
+        self.sim.render_interval = 2
 
 
 @configclass
