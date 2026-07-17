@@ -86,9 +86,9 @@ def g1_task_progress(env: ManagerBasedRLEnv, task_slug: str) -> torch.Tensor:
 
 def clutter_transfer_success(
     env: ManagerBasedRLEnv,
-    xy_tolerance: float = 0.075,
-    z_tolerance: float = 0.045,
-    max_speed: float = 0.10,
+    xy_tolerance: float = 0.09,
+    z_tolerance: float = 0.055,
+    max_speed: float = 0.15,
 ) -> torch.Tensor:
     """Check stable placement of the selected block in the target region."""
     position = _position_env(env)
@@ -100,10 +100,10 @@ def clutter_transfer_success(
 
 def bimanual_reorient_success(
     env: ManagerBasedRLEnv,
-    position_tolerance: float = 0.055,
-    alignment_cosine: float = 0.96,
-    level_cosine: float = 0.96,
-    max_speed: float = 0.12,
+    position_tolerance: float = 0.08,
+    alignment_cosine: float = 0.92,
+    level_cosine: float = 0.92,
+    max_speed: float = 0.15,
 ) -> torch.Tensor:
     """Check stable, level placement of the bar along the support axis."""
     obj = _object(env)
@@ -123,10 +123,10 @@ def bimanual_reorient_success(
 
 def precision_insert_success(
     env: ManagerBasedRLEnv,
-    xy_tolerance: float = 0.015,
-    z_tolerance: float = 0.025,
-    upright_cosine: float = 0.985,
-    max_speed: float = 0.06,
+    xy_tolerance: float = 0.025,
+    z_tolerance: float = 0.04,
+    upright_cosine: float = 0.96,
+    max_speed: float = 0.10,
 ) -> torch.Tensor:
     """Check tight-tolerance upright insertion into the guide socket."""
     obj = _object(env)

@@ -17,3 +17,5 @@ Changed
   depenetration impulses while preserving gravity and stable grasping.
 * Changed all G1 task objects, goals, and fixtures to stay inside the observed
   0.42 m forward-reach limit with margin for randomized resets.
+* Changed G1 success tolerances for practical PICO data collection and added
+  visible success or failure feedback to the teleoperation loop.
