@@ -134,8 +134,8 @@ class AmggG1BaseSceneCfg(ObjectTableSceneCfg):
     )
     overview_camera = _camera(
         "{ENV_REGEX_NS}/OverviewCamera",
-        (1.05, -0.15, 1.55),
-        (-0.61237, -0.61237, 0.35355, 0.35355),
+        (1.05, 1.45, 1.55),
+        (-0.33545082, -0.74522487, 0.52550691, 0.23654836),
     )
     finger_contact = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/[LR]_.*",
