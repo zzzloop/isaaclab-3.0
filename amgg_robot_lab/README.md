@@ -1,5 +1,9 @@
 # AMGG Robot Lab
 
+The active Unitree G1 with RH56DFX research track is documented in
+[README_G1_CN.md](README_G1_CN.md). The original custom-URDF track is retained
+for auditability but is frozen until a corrected robot description is available.
+
 See [README_CN.md](README_CN.md) for the complete setup, task definitions, PICO workflow, recording commands, LeRobot conversion, server acceptance checklist, and real-robot integration contract.
 
 This isolated Isaac Lab extension contains a normalized AMGG URDF, 32 source meshes, FK/Jacobian/dual-arm IK, four automatically evaluated manipulation tasks, controller-based PICO teleoperation, official HDF5 demo recording wrappers, four-camera observations, LeRobot Dataset v3 conversion, and guarded dry-run/ROS 2 hardware boundaries.

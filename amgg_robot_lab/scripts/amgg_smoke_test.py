@@ -6,30 +6,32 @@
 """Launch an AMGG task and hold the FK-derived idle action for finite steps."""
 
 import argparse
-import sys
 
-import amgg_robot_lab  # noqa: F401
-import gymnasium as gym
-import isaaclab_tasks  # noqa: F401
-import torch
-from isaaclab_tasks.utils import add_launcher_args, launch_simulation, resolve_task_config, setup_preset_cli
+from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--task", default="Isaac-AMGG-PickPlace-v0")
 parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument("--num_steps", type=int, default=240)
-add_launcher_args(parser)
-args_cli, hydra_args = setup_preset_cli(parser)
-sys.argv = [sys.argv[0], *hydra_args]
+AppLauncher.add_app_launcher_args(parser)
+args_cli = parser.parse_args()
+
+app_launcher = AppLauncher(args_cli)
+simulation_app = app_launcher.app
+
+# Isaac Sim and USD-dependent modules must be imported only after Kit starts.
+import amgg_robot_lab  # noqa: E402, F401
+import gymnasium as gym  # noqa: E402
+import isaaclab_tasks  # noqa: E402, F401
+import torch  # noqa: E402
+from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 
 def main() -> None:
     """Run finite idle-action physics and observation checks."""
-    env_cfg, _ = resolve_task_config(args_cli.task, "")
-    with launch_simulation(env_cfg, args_cli):
-        env_cfg.scene.num_envs = args_cli.num_envs
-        env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-        env = gym.make(args_cli.task, cfg=env_cfg)
+    env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
+    env = gym.make(args_cli.task, cfg=env_cfg)
+    try:
         observation, _ = env.reset()
         action = torch.tensor(env_cfg.idle_action, device=env.unwrapped.device, dtype=torch.float32)
         action = action.repeat(args_cli.num_envs, 1)
@@ -43,8 +45,12 @@ def main() -> None:
                     raise RuntimeError(f"Observation '{name}' contains non-finite values.")
         print(f"AMGG smoke test passed: task={args_cli.task}, steps={args_cli.num_steps}")
         print(f"action_shape={env.action_space.shape}, policy_keys={sorted(observation['policy'])}")
+    finally:
         env.close()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        simulation_app.close()
