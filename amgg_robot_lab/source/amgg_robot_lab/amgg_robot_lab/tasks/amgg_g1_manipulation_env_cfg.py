@@ -92,7 +92,40 @@ def _camera(prim_path: str, position, rotation) -> CameraCfg:
 
 @configclass
 class AmggG1BaseSceneCfg(ObjectTableSceneCfg):
-    """Official fixed-base G1, table, RGB cameras, and finger contacts."""
+    """Official fixed-base G1 with a clean table, RGB cameras, and finger contacts."""
+
+    # Replace the inherited warehouse packing-table USD.  Its trays and crates
+    # occlude task objects and make controlled visual-domain studies difficult.
+    packing_table = _static_box(
+        "{ENV_REGEX_NS}/WorkTable",
+        (0.0, 0.55, 0.955),
+        (1.10, 0.82, 0.09),
+        (0.34, 0.37, 0.42),
+    )
+    table_leg_front_left = _static_box(
+        "{ENV_REGEX_NS}/TableLegFrontLeft",
+        (-0.48, 0.22, 0.455),
+        (0.06, 0.06, 0.91),
+        (0.20, 0.22, 0.25),
+    )
+    table_leg_front_right = _static_box(
+        "{ENV_REGEX_NS}/TableLegFrontRight",
+        (0.48, 0.22, 0.455),
+        (0.06, 0.06, 0.91),
+        (0.20, 0.22, 0.25),
+    )
+    table_leg_back_left = _static_box(
+        "{ENV_REGEX_NS}/TableLegBackLeft",
+        (-0.48, 0.88, 0.455),
+        (0.06, 0.06, 0.91),
+        (0.20, 0.22, 0.25),
+    )
+    table_leg_back_right = _static_box(
+        "{ENV_REGEX_NS}/TableLegBackRight",
+        (0.48, 0.88, 0.455),
+        (0.06, 0.06, 0.91),
+        (0.20, 0.22, 0.25),
+    )
 
     front_camera = _camera(
         "{ENV_REGEX_NS}/FrontCamera",
@@ -297,8 +330,16 @@ class AmggG1BaseEnvCfg(PickPlaceG1InspireFTPEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.viewer.eye = (2.0, -1.2, 1.65)
+        # The task and the robot hands are both visible from this front
+        # three-quarter view.  Sensor cameras remain independent of the viewer.
+        self.viewer.eye = (1.45, 1.65, 1.55)
         self.viewer.lookat = (0.0, 0.55, 1.05)
+        # The data contract is 30 Hz: 120 Hz physics / 4 control substeps.
+        # Rendering once per environment step also removes redundant camera
+        # renders inherited from the official 20 Hz demonstration config.
+        self.decimation = 4
+        self.sim.render_interval = self.decimation
+        self.seed = 42
         self.num_rerenders_on_reset = 2
 
 

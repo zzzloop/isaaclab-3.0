@@ -37,12 +37,16 @@ def main() -> None:
         action = action.repeat(args_cli.num_envs, 1)
         if tuple(action.shape) != tuple(env.action_space.shape):
             raise RuntimeError(f"Idle action {tuple(action.shape)} does not match {env.action_space.shape}.")
-        for _ in range(args_cli.num_steps):
+        print(f"Starting finite-step validation: task={args_cli.task}, steps={args_cli.num_steps}", flush=True)
+        progress_interval = max(1, min(60, args_cli.num_steps // 4))
+        for step in range(1, args_cli.num_steps + 1):
             observation, _, _, _, _ = env.step(action)
             policy = observation["policy"]
             for name, value in policy.items():
                 if torch.is_floating_point(value) and not torch.isfinite(value).all():
                     raise RuntimeError(f"Observation '{name}' contains non-finite values.")
+            if step % progress_interval == 0 or step == args_cli.num_steps:
+                print(f"AMGG smoke progress: {step}/{args_cli.num_steps}", flush=True)
         print(f"AMGG smoke test passed: task={args_cli.task}, steps={args_cli.num_steps}")
         print(f"action_shape={env.action_space.shape}, policy_keys={sorted(observation['policy'])}")
     finally:
