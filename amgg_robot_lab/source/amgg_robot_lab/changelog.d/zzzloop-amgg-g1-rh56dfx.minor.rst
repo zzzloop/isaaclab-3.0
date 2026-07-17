@@ -15,3 +15,6 @@ Changed
   sampling rate.
 * Changed dynamic-object contact properties and masses to prevent excessive
   depenetration impulses while preserving gravity and stable grasping.
+* Changed G1 XR contact simulation to use 240 Hz physics, bounded arm and hand
+  drives, larger contact margins, and stronger constraint solving to prevent
+  fast teleoperation commands from tunneling through task objects.
