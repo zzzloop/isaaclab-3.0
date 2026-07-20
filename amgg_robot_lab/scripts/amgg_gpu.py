@@ -115,24 +115,36 @@ def configure_preferred_gpu(
                 f"AMGG allowed physical GPUs {missing_indices} were not found; available GPUs: {available}."
             )
         selected = by_physical_index[preferred_index]
+        # Kit/Vulkan assigns renderer indices in PCI-bus order, independent
+        # of CUDA_VISIBLE_DEVICES. Count every detected GPU here (including
+        # disallowed devices) so the index still addresses the selected
+        # physical card in Kit's global GPU table.
+        renderer_gpus = sorted(detected, key=lambda gpu: gpu.pci_sort_key)
+        renderer_index = renderer_gpus.index(selected)
+        renderer_mapping = ", ".join(
+            f"Kit {index}=physical {gpu.physical_index}" for index, gpu in enumerate(renderer_gpus)
+        )
         logical_index = 0
         environment["CUDA_VISIBLE_DEVICES"] = selected.uuid
         identity = f"UUID={selected.uuid}, PCI={selected.pci_bus_id}"
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
         logical_index = 0
+        renderer_index = preferred_index
+        renderer_mapping = "unavailable"
         environment["CUDA_VISIBLE_DEVICES"] = str(preferred_index)
         identity = "UUID/PCI unavailable"
         print(f"[AMGG] Warning: GPU identity probe failed ({error}); using ordinal fallback.", flush=True)
 
     environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    # CloudXR sees the same one-device CUDA namespace, hence logical index 0.
-    environment["NV_GPU_INDEX"] = "0"
+    # CloudXR follows Kit's graphics-device enumeration rather than the
+    # CUDA_VISIBLE_DEVICES namespace.
+    environment["NV_GPU_INDEX"] = str(renderer_index)
     # AppLauncher accepts raw Kit settings through one parsed ``--kit_args``
     # value. Injecting the settings as top-level arguments makes applications
     # such as record_demos.py reject them after Kit starts.
     kit_args = " ".join(
         (
-            f"--/renderer/activeGpu={preferred_index}",
+            f"--/renderer/activeGpu={renderer_index}",
             "--/renderer/multiGpu/enabled=false",
             "--/renderer/multiGpu/autoEnable=false",
             "--/renderer/multiGpu/maxGpuCount=1",
@@ -141,8 +153,8 @@ def configure_preferred_gpu(
     arguments.extend(["--device", "cuda:0", "--kit_args", kit_args])
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> CUDA/PhysX cuda:0, "
-        f"RTX physical GPU {preferred_index}, CloudXR logical GPU 0; multi-GPU rendering disabled; "
-        f"allowed physical GPUs={allowed_indices}.",
+        f"Kit/RTX/CloudXR PCI-order GPU {renderer_index}; multi-GPU rendering disabled; "
+        f"allowed physical GPUs={allowed_indices}; renderer map: {renderer_mapping}.",
         flush=True,
     )
     return logical_index

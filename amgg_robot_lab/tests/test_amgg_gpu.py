@@ -42,11 +42,11 @@ class TestAmggGpu(unittest.TestCase):
         self.assertEqual(logical_index, 0)
         self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-two")
         self.assertEqual(environment["CUDA_DEVICE_ORDER"], "PCI_BUS_ID")
-        self.assertEqual(environment["NV_GPU_INDEX"], "0")
+        self.assertEqual(environment["NV_GPU_INDEX"], "1")
         self.assertIn("--device", arguments)
         self.assertIn("cuda:0", arguments)
         kit_args = arguments[arguments.index("--kit_args") + 1]
-        self.assertIn("--/renderer/activeGpu=2", kit_args)
+        self.assertIn("--/renderer/activeGpu=1", kit_args)
         self.assertIn("--/renderer/multiGpu/enabled=false", kit_args)
         self.assertIn("--/renderer/multiGpu/maxGpuCount=1", kit_args)
 
@@ -73,9 +73,26 @@ class TestAmggGpu(unittest.TestCase):
 
         self.assertEqual(logical_index, 0)
         self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-one")
-        self.assertEqual(environment["NV_GPU_INDEX"], "0")
+        self.assertEqual(environment["NV_GPU_INDEX"], "1")
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=1", kit_args)
+
+    def test_renderer_index_counts_disallowed_gpus(self) -> None:
+        inventory = [
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:B1:00.0"),
+            amgg_gpu._GpuInfo(1, "GPU-one", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(2, "GPU-two", "00000000:4B:00.0"),
+            amgg_gpu._GpuInfo(3, "GPU-three", "00000000:21:00.0"),
+        ]
+        arguments = ["amgg_record_demos.py", "--xr", "--enable_cameras"]
+        environment = {}
+
+        amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+
+        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-two")
+        self.assertEqual(environment["NV_GPU_INDEX"], "2")
+        kit_args = arguments[arguments.index("--kit_args") + 1]
+        self.assertIn("--/renderer/activeGpu=2", kit_args)
 
 
 if __name__ == "__main__":
