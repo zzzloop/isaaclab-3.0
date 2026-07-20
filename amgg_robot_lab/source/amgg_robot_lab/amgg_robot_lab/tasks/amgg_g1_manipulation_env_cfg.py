@@ -441,6 +441,10 @@ class AmggG1BimanualReorientEnvCfg(AmggG1BaseEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        # The official absolute targets place the wrists at x=+/-0.1487 m,
+        # which overlaps this task's support fixture. Apply a deterministic
+        # task-local outward offset in the action term so PICO and replay agree.
+        self.actions.pink_ik_cfg.class_type = mdp.AmggG1BimanualPinkInverseKinematicsAction
         self.episode_length_s = 55.0
 
 

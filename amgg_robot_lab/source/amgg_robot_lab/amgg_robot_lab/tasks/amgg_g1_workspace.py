@@ -15,6 +15,10 @@ AMGG_G1_REACH_MARGIN_M = 0.01
 AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M = 0.035
 AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M = 0.03
 
+# Task-two uses absolute PICO wrist targets.  Move each wrist outward by this
+# amount so the official +/-0.1487 m idle spread clears the support fixture.
+AMGG_G1_BIMANUAL_WRIST_X_OFFSET_M = 0.035
+
 # Task-specific reset ranges keep the larger task-two and task-three assets
 # out of the G1 hands' observed startup occupancy.  Task one keeps the wider
 # visual-domain randomization used for data collection.

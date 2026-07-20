@@ -88,6 +88,26 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertGreaterEqual(layouts["bimanual_reorient"]["right_support"][1], 0.38)
         self.assertGreaterEqual(layouts["precision_insert"]["goal"][1], 0.36)
 
+    def test_bimanual_action_widens_both_wrists_only_for_task_two(self) -> None:
+        offset = self.workspace["AMGG_G1_BIMANUAL_WRIST_X_OFFSET_M"]
+        self.assertEqual(offset, 0.035)
+
+        action_source = (
+            self.project_root / "source" / "amgg_robot_lab" / "amgg_robot_lab" / "tasks" / "mdp" / "amgg_actions.py"
+        ).read_text(encoding="utf-8")
+        env_source = (
+            self.project_root
+            / "source"
+            / "amgg_robot_lab"
+            / "amgg_robot_lab"
+            / "tasks"
+            / "amgg_g1_manipulation_env_cfg.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("_LEFT_WRIST_X_ACTION_INDEX] -= AMGG_G1_BIMANUAL_WRIST_X_OFFSET_M", action_source)
+        self.assertIn("_RIGHT_WRIST_X_ACTION_INDEX] += AMGG_G1_BIMANUAL_WRIST_X_OFFSET_M", action_source)
+        self.assertEqual(env_source.count("mdp.AmggG1BimanualPinkInverseKinematicsAction"), 1)
+
     def test_precision_spawn_and_fixture_have_clearance(self) -> None:
         layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["precision_insert"]
         table_top = 1.0
