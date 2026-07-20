@@ -18,6 +18,15 @@ def _function_defaults(source: str, function_name: str) -> dict[str, object]:
     return {name: ast.literal_eval(value) for name, value in zip(default_names, function.args.defaults)}
 
 
+def _load_standalone_function(source: str, function_name: str):
+    """Load a pure top-level function without importing the Kit application script."""
+    tree = ast.parse(source)
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == function_name)
+    namespace = {}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "<recorder-helper>", "exec"), namespace)
+    return namespace[function_name]
+
+
 class TestAmggG1SuccessFeedback(unittest.TestCase):
     """Keep success thresholds operable and termination feedback visible."""
 
@@ -77,6 +86,34 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
         self.assertIn("exported_successful_episode_count >= args_cli.num_demos", recorder_source)
         self.assertIn("Episode exported; resetting for the next demonstration", recorder_source)
         self.assertIn("SUCCESS! Demo {current_recorded_demo_count} saved. Resetting...", recorder_source)
+
+    def test_amgg_recorder_auto_starts_without_pico_start_event(self) -> None:
+        recorder_source = (self.repo_root / "scripts" / "tools" / "record_demos.py").read_text(encoding="utf-8")
+        wrapper_source = (self.repo_root / "amgg_robot_lab" / "scripts" / "amgg_record_demos.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"--auto_start_recording"', recorder_source)
+        self.assertIn('"--auto_start_recording"', wrapper_source)
+
+        update_state = _load_standalone_function(recorder_source, "_update_recording_active_state")
+
+        # PICO/CloudXR initially reports STOPPED when no START message exists.
+        # AMGG auto-start recording must ignore that initial inactive state.
+        self.assertEqual(update_state(True, False, True, False), (True, False))
+        # Once a real START edge was observed, subsequent STOP remains meaningful.
+        self.assertEqual(update_state(True, True, True, False), (True, True))
+        self.assertEqual(update_state(True, False, True, True), (False, True))
+        # The official opt-in behavior remains unchanged for other callers.
+        self.assertEqual(update_state(True, False, False, False), (False, False))
+
+    def test_readme_documents_all_g1_recording_and_conversion_commands(self) -> None:
+        readme = (self.repo_root / "amgg_robot_lab" / "README_CN.md").read_text(encoding="utf-8")
+        for task_name in ("ClutterTransfer", "BimanualReorient", "PrecisionInsert"):
+            self.assertIn(f"Isaac-AMGG-G1-{task_name}-XR-v0", readme)
+            self.assertIn(f"Isaac-AMGG-G1-{task_name}-v0", readme)
+        self.assertIn("amgg_convert_g1_hdf5_to_lerobot.py", readme)
+        self.assertIn("--source_fps 60", readme)
+        self.assertIn("--fps 30", readme)
 
 
 if __name__ == "__main__":

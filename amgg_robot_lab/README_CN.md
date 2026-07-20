@@ -201,6 +201,50 @@ ControllerTracker initialized (left + right)
 
 ## 8. 自动判定录制
 
+### 当前三个 G1 XR 任务
+
+`amgg_record_demos.py` 现在会为 AMGG 自动启用录制，不再要求 PICO 客户端先发送额外的 `START` 消息；当第一帧有效 controller action 到达时即开始 `env.step()` 和 HDF5 记录。若需要恢复官方的远端 START/STOP 门控，可显式加 `--no-auto_start_recording`。
+
+先为每个任务各录 1 条成功 episode 验收。成功后把 `--num_demos 1` 改成目标条数：
+
+```bash
+mkdir -p datasets
+
+# 任务一：杂乱物体搬运
+./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
+  --task Isaac-AMGG-G1-ClutterTransfer-XR-v0 \
+  --visualizer kit \
+  --xr \
+  --enable_cameras \
+  --num_demos 1 \
+  --num_success_steps 12 \
+  --dataset_file ./datasets/amgg_g1_clutter_transfer_rgb.hdf5
+
+# 任务二：双臂长杆重定向
+./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
+  --task Isaac-AMGG-G1-BimanualReorient-XR-v0 \
+  --visualizer kit \
+  --xr \
+  --enable_cameras \
+  --num_demos 1 \
+  --num_success_steps 15 \
+  --dataset_file ./datasets/amgg_g1_bimanual_reorient_rgb.hdf5
+
+# 任务三：精密插入
+./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
+  --task Isaac-AMGG-G1-PrecisionInsert-XR-v0 \
+  --visualizer kit \
+  --xr \
+  --enable_cameras \
+  --num_demos 1 \
+  --num_success_steps 15 \
+  --dataset_file ./datasets/amgg_g1_precision_insert_rgb.hdf5
+```
+
+三个 XR 配置运行在 60 Hz；`--step_hz` 在 XR/IsaacTeleop 路径中不会限速，因此无需填写。任务满足连续成功步数后，脚本会打印 `Episode exported` 和 `Demo N saved`，然后自动 reset。G1 HDF5 至少应包含 38-D `actions`/`processed_actions`、53-D `obs/robot_joint_pos`、12-D `obs/tactile`、左右 EEF 位姿、任务状态，以及 `obs/image_front` 和 `obs/image_overview` 两路 RGB。
+
+### 旧版 AMGG 23-DoF 任务
+
 纯遥操入口沿用官方行为，会在 XR 模式临时移除额外传感器相机以保证帧率；这不改变任务与数据集的四相机契约。录制入口则必须显式传入 `--enable_cameras`。先只录制 1 条，确认任务判定、同步性和磁盘写入速度：
 
 ```bash
@@ -262,6 +306,42 @@ conda activate amgg_lerobot
 pip install lerobot h5py numpy
 pip install -e ~/zzk_data/IsaacLab/amgg_robot_lab/source/amgg_robot_lab
 ```
+
+当前三个 G1 XR 任务必须使用 `amgg_convert_g1_hdf5_to_lerobot.py`，不能使用旧的 23/21 维转换器。录制源是 60 Hz，下面统一同步降采样为 30 Hz LeRobot 数据：
+
+```bash
+# 任务一：杂乱物体搬运
+python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
+  datasets/amgg_g1_clutter_transfer_rgb.hdf5 \
+  datasets/lerobot_amgg_g1_clutter_transfer \
+  --task Isaac-AMGG-G1-ClutterTransfer-v0 \
+  --repo_id local/amgg_g1_clutter_transfer \
+  --source_fps 60 \
+  --fps 30 \
+  --action_source raw
+
+# 任务二：双臂长杆重定向
+python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
+  datasets/amgg_g1_bimanual_reorient_rgb.hdf5 \
+  datasets/lerobot_amgg_g1_bimanual_reorient \
+  --task Isaac-AMGG-G1-BimanualReorient-v0 \
+  --repo_id local/amgg_g1_bimanual_reorient \
+  --source_fps 60 \
+  --fps 30 \
+  --action_source raw
+
+# 任务三：精密插入
+python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
+  datasets/amgg_g1_precision_insert_rgb.hdf5 \
+  datasets/lerobot_amgg_g1_precision_insert \
+  --task Isaac-AMGG-G1-PrecisionInsert-v0 \
+  --repo_id local/amgg_g1_precision_insert \
+  --source_fps 60 \
+  --fps 30 \
+  --action_source raw
+```
+
+转换阶段的 `--task` 使用数据集契约中的 canonical 非 XR ID；它描述任务语义，XR 后缀只表示采集时的 60 Hz 仿真配置。转换器默认只读取 `success=True` 的 episode，并对状态、动作、触觉、EEF、环境状态和两路 RGB 使用同一个 stride，避免流之间错帧。
 
 转换命令：
 
