@@ -76,10 +76,9 @@ def configure_preferred_gpu(
     """Pin CUDA, PhysX, RTX, and CloudXR to one physical GPU.
 
     The AMGG default is physical GPU 2. Camera recording uses CUDA/RTX
-    interop, so exposing several GPUs while physics and rendering select
-    different devices can poison the CUDA context with error 700. Only the
-    selected GPU is exposed to CUDA, while Kit receives the corresponding
-    physical renderer index and multi-GPU rendering is disabled. Passing
+    external-memory interop, so CUDA and Kit must use the same global
+    PCI-order device namespace. The selected GPU is explicit for CUDA/PhysX,
+    Kit/RTX, and CloudXR, while multi-GPU rendering is disabled. Passing
     ``--device`` opts out so an explicit operator choice is preserved.
 
     Args:
@@ -88,8 +87,8 @@ def configure_preferred_gpu(
         inventory: Optional GPU inventory for deterministic testing.
 
     Returns:
-        Logical CUDA GPU index 0, or ``None`` when ``--device`` was explicitly
-        provided.
+        Selected PCI-order GPU index, or ``None`` when ``--device`` was
+        explicitly provided.
     """
     arguments = sys.argv if arguments is None else arguments
     environment = os.environ if environment is None else environment
@@ -120,41 +119,39 @@ def configure_preferred_gpu(
         # disallowed devices) so the index still addresses the selected
         # physical card in Kit's global GPU table.
         renderer_gpus = sorted(detected, key=lambda gpu: gpu.pci_sort_key)
-        renderer_index = renderer_gpus.index(selected)
+        selected_index = renderer_gpus.index(selected)
         renderer_mapping = ", ".join(
             f"Kit {index}=physical {gpu.physical_index}" for index, gpu in enumerate(renderer_gpus)
         )
-        logical_index = 0
-        environment["CUDA_VISIBLE_DEVICES"] = selected.uuid
         identity = f"UUID={selected.uuid}, PCI={selected.pci_bus_id}"
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
-        logical_index = 0
-        renderer_index = preferred_index
-        renderer_mapping = "unavailable"
-        environment["CUDA_VISIBLE_DEVICES"] = str(preferred_index)
+        selected_index = preferred_index
+        renderer_mapping = "unavailable; using physical ordinal fallback"
         identity = "UUID/PCI unavailable"
         print(f"[AMGG] Warning: GPU identity probe failed ({error}); using ordinal fallback.", flush=True)
 
+    # Do not remap a non-zero physical GPU to cuda:0. RTX camera render
+    # products are created in Kit's global Vulkan namespace, and remapping
+    # only CUDA can make external-memory import address a different device.
+    environment.pop("CUDA_VISIBLE_DEVICES", None)
     environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    # CloudXR follows Kit's graphics-device enumeration rather than the
-    # CUDA_VISIBLE_DEVICES namespace.
-    environment["NV_GPU_INDEX"] = str(renderer_index)
+    environment["NV_GPU_INDEX"] = str(selected_index)
     # AppLauncher accepts raw Kit settings through one parsed ``--kit_args``
     # value. Injecting the settings as top-level arguments makes applications
     # such as record_demos.py reject them after Kit starts.
     kit_args = " ".join(
         (
-            f"--/renderer/activeGpu={renderer_index}",
+            f"--/renderer/activeGpu={selected_index}",
             "--/renderer/multiGpu/enabled=false",
             "--/renderer/multiGpu/autoEnable=false",
             "--/renderer/multiGpu/maxGpuCount=1",
         )
     )
-    arguments.extend(["--device", "cuda:0", "--kit_args", kit_args])
+    arguments.extend(["--device", f"cuda:{selected_index}", "--kit_args", kit_args])
     print(
-        f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> CUDA/PhysX cuda:0, "
-        f"Kit/RTX/CloudXR PCI-order GPU {renderer_index}; multi-GPU rendering disabled; "
+        f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
+        f"CUDA/PhysX/Kit/RTX/CloudXR PCI-order GPU {selected_index}; multi-GPU rendering disabled; "
         f"allowed physical GPUs={allowed_indices}; renderer map: {renderer_mapping}.",
         flush=True,
     )
-    return logical_index
+    return selected_index

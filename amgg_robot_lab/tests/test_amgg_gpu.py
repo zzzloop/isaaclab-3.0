@@ -39,12 +39,12 @@ class TestAmggGpu(unittest.TestCase):
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
-        self.assertEqual(logical_index, 0)
-        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-two")
+        self.assertEqual(logical_index, 1)
+        self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
         self.assertEqual(environment["CUDA_DEVICE_ORDER"], "PCI_BUS_ID")
         self.assertEqual(environment["NV_GPU_INDEX"], "1")
         self.assertIn("--device", arguments)
-        self.assertIn("cuda:0", arguments)
+        self.assertIn("cuda:1", arguments)
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=1", kit_args)
         self.assertIn("--/renderer/multiGpu/enabled=false", kit_args)
@@ -71,8 +71,8 @@ class TestAmggGpu(unittest.TestCase):
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
-        self.assertEqual(logical_index, 0)
-        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-one")
+        self.assertEqual(logical_index, 1)
+        self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
         self.assertEqual(environment["NV_GPU_INDEX"], "1")
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=1", kit_args)
@@ -89,8 +89,9 @@ class TestAmggGpu(unittest.TestCase):
 
         amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
-        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-two")
+        self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
         self.assertEqual(environment["NV_GPU_INDEX"], "2")
+        self.assertIn("cuda:2", arguments)
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=2", kit_args)
 
