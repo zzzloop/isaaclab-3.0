@@ -127,16 +127,18 @@ def configure_preferred_gpu(
     environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     # CloudXR sees the same one-device CUDA namespace, hence logical index 0.
     environment["NV_GPU_INDEX"] = "0"
-    arguments.extend(
-        [
-            "--device",
-            "cuda:0",
+    # AppLauncher accepts raw Kit settings through one parsed ``--kit_args``
+    # value. Injecting the settings as top-level arguments makes applications
+    # such as record_demos.py reject them after Kit starts.
+    kit_args = " ".join(
+        (
             f"--/renderer/activeGpu={preferred_index}",
             "--/renderer/multiGpu/enabled=false",
             "--/renderer/multiGpu/autoEnable=false",
             "--/renderer/multiGpu/maxGpuCount=1",
-        ]
+        )
     )
+    arguments.extend(["--device", "cuda:0", "--kit_args", kit_args])
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> CUDA/PhysX cuda:0, "
         f"RTX physical GPU {preferred_index}, CloudXR logical GPU 0; multi-GPU rendering disabled; "
