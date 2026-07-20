@@ -12,15 +12,16 @@ from typing import TYPE_CHECKING
 import isaaclab.utils.math as math_utils
 import torch
 
+from ..amgg_g1_workspace import AMGG_G1_TASK_LAYOUTS
+
 if TYPE_CHECKING:
     from isaaclab.assets import Articulation, RigidObject
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+_GOAL_TOLERANCES_M = {"clutter_transfer": 0.075, "bimanual_reorient": 0.045, "precision_insert": 0.015}
 _GOALS = {
-    "clutter_transfer": (0.24, 0.62, 1.035, 0.075),
-    "bimanual_reorient": (0.00, 0.68, 1.115, 0.045),
-    "precision_insert": (0.22, 0.62, 1.070, 0.015),
+    task_slug: (*layout["goal"], _GOAL_TOLERANCES_M[task_slug]) for task_slug, layout in AMGG_G1_TASK_LAYOUTS.items()
 }
 
 
@@ -85,9 +86,9 @@ def g1_task_progress(env: ManagerBasedRLEnv, task_slug: str) -> torch.Tensor:
 
 def clutter_transfer_success(
     env: ManagerBasedRLEnv,
-    xy_tolerance: float = 0.075,
-    z_tolerance: float = 0.045,
-    max_speed: float = 0.10,
+    xy_tolerance: float = 0.09,
+    z_tolerance: float = 0.055,
+    max_speed: float = 0.15,
 ) -> torch.Tensor:
     """Check stable placement of the selected block in the target region."""
     position = _position_env(env)
@@ -99,10 +100,10 @@ def clutter_transfer_success(
 
 def bimanual_reorient_success(
     env: ManagerBasedRLEnv,
-    position_tolerance: float = 0.055,
-    alignment_cosine: float = 0.96,
-    level_cosine: float = 0.96,
-    max_speed: float = 0.12,
+    position_tolerance: float = 0.08,
+    alignment_cosine: float = 0.92,
+    level_cosine: float = 0.92,
+    max_speed: float = 0.15,
 ) -> torch.Tensor:
     """Check stable, level placement of the bar along the support axis."""
     obj = _object(env)
@@ -122,10 +123,10 @@ def bimanual_reorient_success(
 
 def precision_insert_success(
     env: ManagerBasedRLEnv,
-    xy_tolerance: float = 0.015,
-    z_tolerance: float = 0.025,
-    upright_cosine: float = 0.985,
-    max_speed: float = 0.06,
+    xy_tolerance: float = 0.025,
+    z_tolerance: float = 0.04,
+    upright_cosine: float = 0.96,
+    max_speed: float = 0.10,
 ) -> torch.Tensor:
     """Check tight-tolerance upright insertion into the guide socket."""
     obj = _object(env)

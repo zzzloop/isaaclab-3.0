@@ -9,6 +9,8 @@ import runpy
 import sys
 from pathlib import Path
 
+from amgg_gpu import configure_preferred_gpu
+
 _AMGG_REGISTRATION_CALLBACK = "amgg_robot_lab.tasks.register_tasks"
 
 
@@ -24,6 +26,7 @@ def _inject_registration_callback() -> None:
 
 def main() -> None:
     """Run the official success-gated HDF5 recording entry point."""
+    configure_preferred_gpu(isolate_windowed_recording_physics=True)
     _inject_registration_callback()
     script = Path(__file__).resolve().parents[2] / "scripts" / "tools" / "record_demos.py"
     runpy.run_path(str(script), run_name="__main__")

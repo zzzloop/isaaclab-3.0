@@ -440,7 +440,7 @@ def process_success_condition(env: gym.Env, success_term: object | None, success
                 [0], torch.tensor([[True]], dtype=torch.bool, device=env.device)
             )
             env.recorder_manager.export_episodes([0])
-            print("Success condition met! Recording completed.")
+            print("Success condition met! Episode exported; resetting for the next demonstration.")
             return success_step_count, True
     else:
         success_step_count = 0
@@ -600,7 +600,7 @@ def run_simulation_loop(
                 # Update demo count if it has changed
                 if env.recorder_manager.exported_successful_episode_count > current_recorded_demo_count:
                     current_recorded_demo_count = env.recorder_manager.exported_successful_episode_count
-                    label_text = f"Recorded {current_recorded_demo_count} successful demonstrations."
+                    label_text = f"SUCCESS! Demo {current_recorded_demo_count} saved. Resetting..."
                     print(label_text)
 
                 # Check if we've reached the desired number of demos

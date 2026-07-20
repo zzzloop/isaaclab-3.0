@@ -77,6 +77,46 @@ class TestAmggG1Hdf5Conversion(unittest.TestCase):
                     only_successful=True,
                 )
 
+    def test_downsamples_all_streams_with_one_synchronized_stride(self) -> None:
+        converter = _load_converter_module()
+        frames = np.arange(6, dtype=np.float32)
+        episode = converter.G1EpisodeArrays(
+            name="demo_0",
+            state=np.repeat(frames[:, None], 53, axis=1),
+            action=np.repeat(frames[:, None], 38, axis=1),
+            motor_proxy=np.repeat(frames[:, None], 12, axis=1),
+            tactile=np.repeat(frames[:, None], 12, axis=1),
+            tcp_pose=np.repeat(frames[:, None], 14, axis=1),
+            environment_state=np.repeat(frames[:, None], 18, axis=1),
+            images={"front": np.repeat(frames[:, None, None, None], 3, axis=3).astype(np.uint8)},
+        )
+
+        downsampled = converter.downsample_g1_episode(episode, stride=2)
+
+        self.assertEqual(downsampled.length, 3)
+        np.testing.assert_array_equal(downsampled.state[:, 0], [0.0, 2.0, 4.0])
+        np.testing.assert_array_equal(downsampled.action[:, 0], [0.0, 2.0, 4.0])
+        np.testing.assert_array_equal(downsampled.images["front"][:, 0, 0, 0], [0, 2, 4])
+
+    def test_rejects_non_integer_rate_conversion_before_lerobot_import(self) -> None:
+        converter = _load_converter_module()
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "g1.hdf5"
+            output_path = Path(directory) / "output"
+            _write_episode(input_path)
+            with self.assertRaisesRegex(ValueError, "integer multiple"):
+                converter.convert_g1_dataset(
+                    input_path,
+                    output_path,
+                    task_id="Isaac-AMGG-G1-ClutterTransfer-v0",
+                    repo_id="local/test",
+                    fps=30,
+                    source_fps=50,
+                    action_source="raw",
+                    include_images=False,
+                    only_successful=True,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
