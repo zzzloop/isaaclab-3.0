@@ -37,12 +37,12 @@ def _has_device_argument(arguments: Sequence[str]) -> bool:
     return any(argument == "--device" or argument.startswith("--device=") for argument in arguments[1:])
 
 
-def _parse_physical_indices(value: str) -> list[int]:
+def _parse_physical_indices(value: str, variable_name: str, *, allow_empty: bool = False) -> list[int]:
     indices = [int(item.strip()) for item in value.split(",") if item.strip()]
-    if not indices:
-        raise ValueError("AMGG_ALLOWED_GPUS must contain at least one physical GPU index.")
+    if not indices and not allow_empty:
+        raise ValueError(f"{variable_name} must contain at least one physical GPU index.")
     if len(indices) != len(set(indices)):
-        raise ValueError("AMGG_ALLOWED_GPUS must not contain duplicate physical GPU indices.")
+        raise ValueError(f"{variable_name} must not contain duplicate physical GPU indices.")
     return indices
 
 
@@ -75,7 +75,9 @@ def configure_preferred_gpu(
 ) -> int | None:
     """Pin CUDA, PhysX, RTX, and CloudXR to one physical GPU.
 
-    The AMGG default is physical GPU 2. Camera recording uses CUDA/RTX
+    The AMGG default is physical GPU 1. Physical GPUs 2 and 3 are quarantined
+    by default because they have produced repeated driver-level Xid failures on
+    the target workstation. Camera recording uses CUDA/RTX
     external-memory interop, so CUDA and Kit must use the same global
     PCI-order device namespace. The selected GPU is explicit for CUDA/PhysX,
     Kit/RTX, and CloudXR, while multi-GPU rendering is disabled. Passing
@@ -97,10 +99,21 @@ def configure_preferred_gpu(
         return None
 
     try:
-        preferred_index = int(environment.get("AMGG_PREFERRED_GPU", "2"))
-        allowed_indices = _parse_physical_indices(environment.get("AMGG_ALLOWED_GPUS", "0,1,2"))
+        preferred_index = int(environment.get("AMGG_PREFERRED_GPU", "1"))
+        allowed_indices = _parse_physical_indices(environment.get("AMGG_ALLOWED_GPUS", "0,1"), "AMGG_ALLOWED_GPUS")
+        quarantined_indices = _parse_physical_indices(
+            environment.get("AMGG_QUARANTINED_GPUS", "2,3"),
+            "AMGG_QUARANTINED_GPUS",
+            allow_empty=True,
+        )
     except ValueError as error:
         raise SystemExit(f"Invalid AMGG GPU configuration: {error}") from error
+    if preferred_index in quarantined_indices:
+        raise SystemExit(
+            f"AMGG_PREFERRED_GPU={preferred_index} is quarantined by "
+            f"AMGG_QUARANTINED_GPUS={quarantined_indices}. Clear the quarantine only after the GPU has been reset "
+            "and passes administrator diagnostics."
+        )
     if preferred_index not in allowed_indices:
         raise SystemExit(f"AMGG_PREFERRED_GPU={preferred_index} is not present in AMGG_ALLOWED_GPUS={allowed_indices}.")
 
@@ -151,7 +164,8 @@ def configure_preferred_gpu(
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
         f"CUDA/PhysX/Kit/RTX/CloudXR PCI-order GPU {selected_index}; multi-GPU rendering disabled; "
-        f"allowed physical GPUs={allowed_indices}; renderer map: {renderer_mapping}.",
+        f"allowed physical GPUs={allowed_indices}; quarantined physical GPUs={quarantined_indices}; "
+        f"renderer map: {renderer_mapping}.",
         flush=True,
     )
     return selected_index

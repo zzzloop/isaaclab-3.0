@@ -35,7 +35,11 @@ class TestAmggGpu(unittest.TestCase):
             amgg_gpu._GpuInfo(2, "GPU-two", "00000000:4B:00.0"),
         ]
         arguments = ["amgg_teleop.py", "--xr"]
-        environment = {}
+        environment = {
+            "AMGG_PREFERRED_GPU": "2",
+            "AMGG_ALLOWED_GPUS": "0,1,2",
+            "AMGG_QUARANTINED_GPUS": "",
+        }
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
@@ -85,7 +89,11 @@ class TestAmggGpu(unittest.TestCase):
             amgg_gpu._GpuInfo(3, "GPU-three", "00000000:21:00.0"),
         ]
         arguments = ["amgg_record_demos.py", "--xr", "--enable_cameras"]
-        environment = {}
+        environment = {
+            "AMGG_PREFERRED_GPU": "2",
+            "AMGG_ALLOWED_GPUS": "0,1,2",
+            "AMGG_QUARANTINED_GPUS": "",
+        }
 
         amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
@@ -94,6 +102,31 @@ class TestAmggGpu(unittest.TestCase):
         self.assertIn("cuda:2", arguments)
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=2", kit_args)
+
+    def test_default_uses_physical_gpu_one(self) -> None:
+        inventory = [
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(1, "GPU-one", "00000000:4B:00.0"),
+            amgg_gpu._GpuInfo(2, "GPU-two", "00000000:B1:00.0"),
+            amgg_gpu._GpuInfo(3, "GPU-three", "00000000:CA:00.0"),
+        ]
+        arguments = ["amgg_record_demos.py", "--xr", "--enable_cameras"]
+        environment = {}
+
+        logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+
+        self.assertEqual(logical_index, 1)
+        self.assertEqual(environment["NV_GPU_INDEX"], "1")
+        self.assertIn("cuda:1", arguments)
+        kit_args = arguments[arguments.index("--kit_args") + 1]
+        self.assertIn("--/renderer/activeGpu=1", kit_args)
+
+    def test_quarantined_gpu_is_rejected_before_launch(self) -> None:
+        arguments = ["amgg_record_demos.py", "--xr", "--enable_cameras"]
+        environment = {"AMGG_PREFERRED_GPU": "2", "AMGG_ALLOWED_GPUS": "0,1,2"}
+
+        with self.assertRaisesRegex(SystemExit, "AMGG_PREFERRED_GPU=2 is quarantined"):
+            amgg_gpu.configure_preferred_gpu(arguments, environment, inventory=[])
 
 
 if __name__ == "__main__":
