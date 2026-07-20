@@ -26,8 +26,7 @@ class TestAmggG1Workspace(unittest.TestCase):
         layouts = self.workspace["AMGG_G1_TASK_LAYOUTS"]
         reach_limit = self.workspace["AMGG_G1_REACH_LIMIT_M"]
         reach_margin = self.workspace["AMGG_G1_REACH_MARGIN_M"]
-        reset_x_half_range = self.workspace["AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M"]
-        reset_y_half_range = self.workspace["AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M"]
+        reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]
 
         self.assertEqual(set(layouts), {"clutter_transfer", "bimanual_reorient", "precision_insert"})
         for task_slug, layout in layouts.items():
@@ -35,6 +34,8 @@ class TestAmggG1Workspace(unittest.TestCase):
                 with self.subTest(task=task_slug, entity=name):
                     self.assertLessEqual(math.hypot(position[0], position[1]), reach_limit - reach_margin)
             with self.subTest(task=task_slug, entity="randomized_object"):
+                reset_x_half_range = max(abs(value) for value in reset_ranges[task_slug]["x"])
+                reset_y_half_range = max(abs(value) for value in reset_ranges[task_slug]["y"])
                 randomized_radius = math.hypot(
                     abs(layout["object"][0]) + reset_x_half_range,
                     layout["object"][1] + reset_y_half_range,
@@ -61,10 +62,31 @@ class TestAmggG1Workspace(unittest.TestCase):
 
     def test_bimanual_spawn_is_separated_from_supports(self) -> None:
         layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["bimanual_reorient"]
-        reset_y_half_range = self.workspace["AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M"]
-        bar_near_edge = layout["object"][1] - reset_y_half_range - 0.055 / 2
-        support_far_edge = max(layout["left_support"][1], layout["right_support"][1]) + 0.13 / 2
-        self.assertGreaterEqual(bar_near_edge - support_far_edge, 0.01)
+        reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]["bimanual_reorient"]
+        rotation = self.workspace["AMGG_G1_TASK_OBJECT_ROTATIONS"]["bimanual_reorient"]
+
+        # The 90-degree spawn makes the bar only 55 mm wide across the hands.
+        self.assertAlmostEqual(abs(rotation[0]), math.sqrt(0.5), places=6)
+        self.assertAlmostEqual(abs(rotation[3]), math.sqrt(0.5), places=6)
+        yaw_error = reset_ranges["yaw"][1]
+        bar_x_half_extent = 0.30 / 2 * math.sin(yaw_error) + 0.055 / 2 * math.cos(yaw_error)
+        bar_right_edge = layout["object"][0] + reset_ranges["x"][1] + bar_x_half_extent
+        right_support_left_edge = layout["right_support"][0] - 0.070 / 2
+        self.assertGreaterEqual(right_support_left_edge - bar_right_edge, 0.02)
+
+        bar_y_half_extent = 0.30 / 2 * math.cos(yaw_error) + 0.055 / 2 * math.sin(yaw_error)
+        bar_near_edge = layout["object"][1] + reset_ranges["y"][0] - bar_y_half_extent
+        table_near_edge = 0.14
+        table_far_edge = 0.96
+        bar_far_edge = layout["object"][1] + reset_ranges["y"][1] + bar_y_half_extent
+        self.assertGreaterEqual(bar_near_edge, table_near_edge)
+        self.assertLessEqual(bar_far_edge, table_far_edge)
+
+    def test_large_fixtures_are_beyond_startup_hand_band(self) -> None:
+        layouts = self.workspace["AMGG_G1_TASK_LAYOUTS"]
+        self.assertGreaterEqual(layouts["bimanual_reorient"]["left_support"][1], 0.38)
+        self.assertGreaterEqual(layouts["bimanual_reorient"]["right_support"][1], 0.38)
+        self.assertGreaterEqual(layouts["precision_insert"]["goal"][1], 0.36)
 
     def test_precision_spawn_and_fixture_have_clearance(self) -> None:
         layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["precision_insert"]
@@ -79,7 +101,7 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertGreaterEqual(cross_wall_left_edge - left_inner_edge, 0.002)
         self.assertGreaterEqual(right_inner_edge - cross_wall_right_edge, 0.002)
 
-        reset_x_half_range = self.workspace["AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M"]
+        reset_x_half_range = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]["precision_insert"]["x"][1]
         key_right_edge = layout["object"][0] + reset_x_half_range + 0.045 / 2
         nearest_fixture_edge = min(left_inner_edge, cross_wall_left_edge)
         self.assertGreaterEqual(nearest_fixture_edge - key_right_edge, 0.02)

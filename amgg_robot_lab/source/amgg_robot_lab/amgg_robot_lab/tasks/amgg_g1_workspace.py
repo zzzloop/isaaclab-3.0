@@ -15,6 +15,36 @@ AMGG_G1_REACH_MARGIN_M = 0.01
 AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M = 0.035
 AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M = 0.03
 
+# Task-specific reset ranges keep the larger task-two and task-three assets
+# out of the G1 hands' observed startup occupancy.  Task one keeps the wider
+# visual-domain randomization used for data collection.
+AMGG_G1_TASK_OBJECT_RESET_RANGES: dict[str, dict[str, tuple[float, float]]] = {
+    "clutter_transfer": {
+        "x": (-0.035, 0.035),
+        "y": (-0.030, 0.030),
+        "yaw": (-0.25, 0.25),
+    },
+    "bimanual_reorient": {
+        "x": (-0.008, 0.008),
+        "y": (-0.008, 0.008),
+        "yaw": (-0.06, 0.06),
+    },
+    "precision_insert": {
+        "x": (-0.010, 0.010),
+        "y": (-0.008, 0.008),
+        "yaw": (-0.12, 0.12),
+    },
+}
+
+# Isaac Lab quaternion convention is (w, x, y, z).  Task two starts with
+# the bar's long axis along world y so it fits in the gap between the hands;
+# the goal requires rotating it back onto world x.
+AMGG_G1_TASK_OBJECT_ROTATIONS: dict[str, tuple[float, float, float, float]] = {
+    "clutter_transfer": (1.0, 0.0, 0.0, 0.0),
+    "bimanual_reorient": (0.70710678, 0.0, 0.0, 0.70710678),
+    "precision_insert": (1.0, 0.0, 0.0, 0.0),
+}
+
 
 AMGG_G1_TASK_LAYOUTS: dict[str, dict[str, tuple[float, float, float]]] = {
     "clutter_transfer": {
@@ -25,19 +55,23 @@ AMGG_G1_TASK_LAYOUTS: dict[str, dict[str, tuple[float, float, float]]] = {
         "goal_marker": (0.18, 0.34, 1.003),
     },
     "bimanual_reorient": {
-        "object": (0.00, 0.37, 1.035),
-        "left_support": (-0.18, 0.23, 1.055),
-        "right_support": (0.18, 0.23, 1.055),
-        "goal": (0.00, 0.23, 1.115),
-        "goal_marker": (0.00, 0.23, 1.115),
+        # The narrow, longitudinal spawn lies between the default hands.
+        # The support fixture is in the forward band, beyond the fingertips.
+        "object": (0.00, 0.300, 1.035),
+        "left_support": (-0.10, 0.390, 1.050),
+        "right_support": (0.10, 0.390, 1.050),
+        "goal": (0.00, 0.390, 1.105),
+        "goal_marker": (0.00, 0.390, 1.105),
     },
     "precision_insert": {
-        "object": (-0.08, 0.35, 1.076),
-        "guide_left": (0.115, 0.320, 1.055),
-        "guide_right": (0.205, 0.320, 1.055),
-        "guide_near": (0.160, 0.278, 1.055),
-        "guide_far": (0.160, 0.362, 1.055),
-        "goal": (0.160, 0.320, 1.070),
-        "goal_marker": (0.160, 0.320, 1.003),
+        # Both the key and socket are moved beyond the startup fingertips.
+        # Their lateral separation preserves a collision-free reset.
+        "object": (-0.06, 0.390, 1.076),
+        "guide_left": (-0.005, 0.370, 1.055),
+        "guide_right": (0.085, 0.370, 1.055),
+        "guide_near": (0.040, 0.3335, 1.055),
+        "guide_far": (0.040, 0.4065, 1.055),
+        "goal": (0.040, 0.370, 1.070),
+        "goal_marker": (0.040, 0.370, 1.003),
     },
 }

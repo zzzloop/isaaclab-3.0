@@ -33,6 +33,8 @@ from .amgg_g1_workspace import (
     AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M,
     AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M,
     AMGG_G1_TASK_LAYOUTS,
+    AMGG_G1_TASK_OBJECT_RESET_RANGES,
+    AMGG_G1_TASK_OBJECT_ROTATIONS,
 )
 
 _CLUTTER_LAYOUT = AMGG_G1_TASK_LAYOUTS["clutter_transfer"]
@@ -171,7 +173,9 @@ class AmggG1ClutterTransferSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_CLUTTER_LAYOUT["object"]),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=_CLUTTER_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["clutter_transfer"]
+        ),
         spawn=sim_utils.CuboidCfg(size=(0.070, 0.070, 0.070), **_dynamic_material((0.95, 0.28, 0.04))),
     )
     distractor_a = RigidObjectCfg(
@@ -193,19 +197,21 @@ class AmggG1BimanualReorientSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_BIMANUAL_LAYOUT["object"]),
-        spawn=sim_utils.CuboidCfg(size=(0.48, 0.055, 0.055), **_dynamic_material((0.06, 0.32, 0.95), 0.40)),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=_BIMANUAL_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["bimanual_reorient"]
+        ),
+        spawn=sim_utils.CuboidCfg(size=(0.30, 0.055, 0.055), **_dynamic_material((0.06, 0.32, 0.95), 0.32)),
     )
     left_support = _static_box(
-        "{ENV_REGEX_NS}/LeftSupport", _BIMANUAL_LAYOUT["left_support"], (0.085, 0.13, 0.11), (0.16, 0.70, 0.78)
+        "{ENV_REGEX_NS}/LeftSupport", _BIMANUAL_LAYOUT["left_support"], (0.070, 0.080, 0.10), (0.16, 0.70, 0.78)
     )
     right_support = _static_box(
         "{ENV_REGEX_NS}/RightSupport",
         _BIMANUAL_LAYOUT["right_support"],
-        (0.085, 0.13, 0.11),
+        (0.070, 0.080, 0.10),
         (0.16, 0.70, 0.78),
     )
-    goal = _goal_marker(_BIMANUAL_LAYOUT["goal_marker"], (0.52, 0.09, 0.008), (0.10, 0.85, 0.88))
+    goal = _goal_marker(_BIMANUAL_LAYOUT["goal_marker"], (0.34, 0.075, 0.008), (0.10, 0.85, 0.88))
 
 
 @configclass
@@ -214,23 +220,25 @@ class AmggG1PrecisionInsertSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_PRECISION_LAYOUT["object"]),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=_PRECISION_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["precision_insert"]
+        ),
         spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.14), **_dynamic_material((0.96, 0.72, 0.05), 0.20)),
     )
     guide_left = _static_box(
-        "{ENV_REGEX_NS}/GuideLeft", _PRECISION_LAYOUT["guide_left"], (0.025, 0.105, 0.11), (0.55, 0.12, 0.75)
+        "{ENV_REGEX_NS}/GuideLeft", _PRECISION_LAYOUT["guide_left"], (0.025, 0.090, 0.11), (0.55, 0.12, 0.75)
     )
     guide_right = _static_box(
         "{ENV_REGEX_NS}/GuideRight",
         _PRECISION_LAYOUT["guide_right"],
-        (0.025, 0.105, 0.11),
+        (0.025, 0.090, 0.11),
         (0.55, 0.12, 0.75),
     )
     guide_near = _static_box(
-        "{ENV_REGEX_NS}/GuideNear", _PRECISION_LAYOUT["guide_near"], (0.060, 0.025, 0.11), (0.55, 0.12, 0.75)
+        "{ENV_REGEX_NS}/GuideNear", _PRECISION_LAYOUT["guide_near"], (0.060, 0.018, 0.11), (0.55, 0.12, 0.75)
     )
     guide_far = _static_box(
-        "{ENV_REGEX_NS}/GuideFar", _PRECISION_LAYOUT["guide_far"], (0.060, 0.025, 0.11), (0.55, 0.12, 0.75)
+        "{ENV_REGEX_NS}/GuideFar", _PRECISION_LAYOUT["guide_far"], (0.060, 0.018, 0.11), (0.55, 0.12, 0.75)
     )
     goal = _goal_marker(_PRECISION_LAYOUT["goal_marker"], (0.055, 0.055, 0.008), (0.72, 0.18, 0.90))
 
@@ -336,6 +344,36 @@ class AmggG1EventsCfg:
 
 
 @configclass
+class BimanualEventsCfg(AmggG1EventsCfg):
+    """Reset the longitudinal bar without sweeping it into either hand."""
+
+    reset_object = EventTerm(
+        func=base_mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": AMGG_G1_TASK_OBJECT_RESET_RANGES["bimanual_reorient"],
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+
+@configclass
+class PrecisionEventsCfg(AmggG1EventsCfg):
+    """Keep the key outside the hands and the guide during reset."""
+
+    reset_object = EventTerm(
+        func=base_mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": AMGG_G1_TASK_OBJECT_RESET_RANGES["precision_insert"],
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+
+@configclass
 class AmggG1FailureTermsCfg:
     time_out = DoneTerm(func=base_mdp.time_out, time_out=True)
     dropped = DoneTerm(func=mdp.g1_object_dropped)
@@ -398,6 +436,7 @@ class AmggG1BimanualReorientEnvCfg(AmggG1BaseEnvCfg):
         num_envs=1, env_spacing=2.5, replicate_physics=True
     )
     observations: BimanualObservationsCfg = BimanualObservationsCfg()
+    events: BimanualEventsCfg = BimanualEventsCfg()
     terminations: BimanualTerminationsCfg = BimanualTerminationsCfg()
 
     def __post_init__(self):
@@ -411,6 +450,7 @@ class AmggG1PrecisionInsertEnvCfg(AmggG1BaseEnvCfg):
         num_envs=1, env_spacing=2.5, replicate_physics=True
     )
     observations: PrecisionObservationsCfg = PrecisionObservationsCfg()
+    events: PrecisionEventsCfg = PrecisionEventsCfg()
     terminations: PrecisionTerminationsCfg = PrecisionTerminationsCfg()
 
     def __post_init__(self):
