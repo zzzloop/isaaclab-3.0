@@ -113,11 +113,13 @@ class TestAmggGpu(unittest.TestCase):
         arguments = ["amgg_record_demos.py", "--xr", "--enable_cameras"]
         environment = {}
 
-        logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+        logical_index = amgg_gpu.configure_preferred_gpu(
+            arguments, environment, inventory, isolate_windowed_recording_physics=True
+        )
 
         self.assertEqual(logical_index, 0)
         self.assertEqual(environment["NV_GPU_INDEX"], "0")
-        self.assertIn("cuda:0", arguments)
+        self.assertIn("cpu", arguments)
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=0", kit_args)
         self.assertNotIn("--/app/asyncRendering=false", kit_args)
@@ -142,7 +144,9 @@ class TestAmggGpu(unittest.TestCase):
         ]
         environment = {}
 
-        logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+        logical_index = amgg_gpu.configure_preferred_gpu(
+            arguments, environment, inventory, isolate_windowed_recording_physics=True
+        )
 
         self.assertEqual(logical_index, 1)
         self.assertEqual(environment["NV_GPU_INDEX"], "1")

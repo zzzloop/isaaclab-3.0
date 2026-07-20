@@ -12,6 +12,9 @@ Fixed
 * Fixed headless XR recording startup by removing the explicit Kit visualizer
   option that conflicts with deprecated ``--headless`` handling. XR still
   auto-injects the Kit visualizer required for app-update pumping.
+* Isolated windowed XR camera recording from CUDA error 700 failures by running
+  single-environment PhysX simulation on CPU while retaining RTX, sensor
+  rendering, CloudXR, and the spectator window on the selected display GPU.
 
 Changed
 ^^^^^^^

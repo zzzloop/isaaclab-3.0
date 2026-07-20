@@ -102,6 +102,8 @@ def configure_preferred_gpu(
     arguments: list[str] | None = None,
     environment: MutableMapping[str, str] | None = None,
     inventory: Sequence[_GpuInfo] | None = None,
+    *,
+    isolate_windowed_recording_physics: bool = False,
 ) -> int | None:
     """Pin CUDA, PhysX, RTX, and CloudXR to one physical GPU.
 
@@ -118,6 +120,10 @@ def configure_preferred_gpu(
         arguments: Process argument vector to update. Defaults to :attr:`sys.argv`.
         environment: Process environment to update. Defaults to :attr:`os.environ`.
         inventory: Optional GPU inventory for deterministic testing.
+        isolate_windowed_recording_physics: Run physics on CPU when XR sensor
+            cameras and a Lab window are active. Rendering remains on the
+            selected GPU. This avoids sharing one CUDA context between PhysX,
+            RTX camera external memory, and the XR spectator swapchain.
 
     Returns:
         Selected PCI-order GPU index, or ``None`` when ``--device`` was
@@ -137,6 +143,7 @@ def configure_preferred_gpu(
 
     launch_mode = "headless" if _is_headless(arguments) else "windowed"
     uses_xr_cameras = _has_flag(arguments, "--xr") and _has_flag(arguments, "--enable_cameras")
+    use_cpu_physics = isolate_windowed_recording_physics and uses_xr_cameras and launch_mode == "windowed"
     xr_camera_rendering = "default"
     default_preferred_index = "1" if launch_mode == "headless" else "0"
     try:
@@ -226,11 +233,13 @@ def configure_preferred_gpu(
             # capture synchronous and preventing throttling from toggling it.
             xr_camera_rendering = "windowed-safe"
     kit_args = " ".join(kit_settings)
-    arguments.extend(["--device", f"cuda:{selected_index}", "--kit_args", kit_args])
+    simulation_device = "cpu" if use_cpu_physics else f"cuda:{selected_index}"
+    arguments.extend(["--device", simulation_device, "--kit_args", kit_args])
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
-        f"CUDA/PhysX/Kit/RTX/CloudXR PCI-order GPU {selected_index}; multi-GPU rendering disabled; "
+        f"Kit/RTX/CloudXR PCI-order GPU {selected_index}; multi-GPU rendering disabled; "
         f"launch mode={launch_mode}; "
+        f"physics device={simulation_device}; "
         f"XR camera rendering={xr_camera_rendering}; "
         f"allowed physical GPUs={allowed_indices}; quarantined physical GPUs={quarantined_indices}; "
         f"renderer map: {renderer_mapping}.",
