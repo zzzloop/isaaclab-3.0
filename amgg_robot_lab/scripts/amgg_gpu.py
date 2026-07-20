@@ -73,10 +73,14 @@ def configure_preferred_gpu(
     environment: MutableMapping[str, str] | None = None,
     inventory: Sequence[_GpuInfo] | None = None,
 ) -> int | None:
-    """Map the preferred physical GPU to matching CUDA, Kit, and CloudXR indices.
+    """Pin CUDA, PhysX, RTX, and CloudXR to one physical GPU.
 
-    The AMGG defaults use physical GPU 2 and expose physical GPUs 0, 1, and 2.
-    Passing ``--device`` opts out so an explicit operator choice is preserved.
+    The AMGG default is physical GPU 2. Camera recording uses CUDA/RTX
+    interop, so exposing several GPUs while physics and rendering select
+    different devices can poison the CUDA context with error 700. Only the
+    selected GPU is exposed to CUDA, while Kit receives the corresponding
+    physical renderer index and multi-GPU rendering is disabled. Passing
+    ``--device`` opts out so an explicit operator choice is preserved.
 
     Args:
         arguments: Process argument vector to update. Defaults to :attr:`sys.argv`.
@@ -84,8 +88,8 @@ def configure_preferred_gpu(
         inventory: Optional GPU inventory for deterministic testing.
 
     Returns:
-        The selected logical GPU index, or ``None`` when ``--device`` was
-        explicitly provided.
+        Logical CUDA GPU index 0, or ``None`` when ``--device`` was explicitly
+        provided.
     """
     arguments = sys.argv if arguments is None else arguments
     environment = os.environ if environment is None else environment
@@ -110,23 +114,33 @@ def configure_preferred_gpu(
             raise SystemExit(
                 f"AMGG allowed physical GPUs {missing_indices} were not found; available GPUs: {available}."
             )
-        visible_gpus = sorted((by_physical_index[index] for index in allowed_indices), key=lambda gpu: gpu.pci_sort_key)
-        logical_index = next(index for index, gpu in enumerate(visible_gpus) if gpu.physical_index == preferred_index)
-        environment["CUDA_VISIBLE_DEVICES"] = ",".join(gpu.uuid for gpu in visible_gpus)
-        selected = visible_gpus[logical_index]
+        selected = by_physical_index[preferred_index]
+        logical_index = 0
+        environment["CUDA_VISIBLE_DEVICES"] = selected.uuid
         identity = f"UUID={selected.uuid}, PCI={selected.pci_bus_id}"
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
-        logical_index = allowed_indices.index(preferred_index)
-        environment["CUDA_VISIBLE_DEVICES"] = ",".join(str(index) for index in allowed_indices)
+        logical_index = 0
+        environment["CUDA_VISIBLE_DEVICES"] = str(preferred_index)
         identity = "UUID/PCI unavailable"
         print(f"[AMGG] Warning: GPU identity probe failed ({error}); using ordinal fallback.", flush=True)
 
     environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    environment["NV_GPU_INDEX"] = str(logical_index)
-    arguments.extend(["--device", f"cuda:{logical_index}"])
+    # CloudXR sees the same one-device CUDA namespace, hence logical index 0.
+    environment["NV_GPU_INDEX"] = "0"
+    arguments.extend(
+        [
+            "--device",
+            "cuda:0",
+            f"--/renderer/activeGpu={preferred_index}",
+            "--/renderer/multiGpu/enabled=false",
+            "--/renderer/multiGpu/autoEnable=false",
+            "--/renderer/multiGpu/maxGpuCount=1",
+        ]
+    )
     print(
-        f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
-        f"cuda:{logical_index}, Kit/CloudXR GPU {logical_index}; allowed physical GPUs={allowed_indices}.",
+        f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> CUDA/PhysX cuda:0, "
+        f"RTX physical GPU {preferred_index}, CloudXR logical GPU 0; multi-GPU rendering disabled; "
+        f"allowed physical GPUs={allowed_indices}.",
         flush=True,
     )
     return logical_index

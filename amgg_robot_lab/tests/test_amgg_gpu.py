@@ -39,11 +39,15 @@ class TestAmggGpu(unittest.TestCase):
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
-        self.assertEqual(logical_index, 1)
-        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-one,GPU-two,GPU-zero")
+        self.assertEqual(logical_index, 0)
+        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-two")
         self.assertEqual(environment["CUDA_DEVICE_ORDER"], "PCI_BUS_ID")
-        self.assertEqual(environment["NV_GPU_INDEX"], "1")
-        self.assertEqual(arguments[-2:], ["--device", "cuda:1"])
+        self.assertEqual(environment["NV_GPU_INDEX"], "0")
+        self.assertIn("--device", arguments)
+        self.assertIn("cuda:0", arguments)
+        self.assertIn("--/renderer/activeGpu=2", arguments)
+        self.assertIn("--/renderer/multiGpu/enabled=false", arguments)
+        self.assertIn("--/renderer/multiGpu/maxGpuCount=1", arguments)
 
     def test_explicit_device_preserves_environment(self) -> None:
         arguments = ["amgg_teleop.py", "--device", "cuda:1"]
@@ -66,9 +70,10 @@ class TestAmggGpu(unittest.TestCase):
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
-        self.assertEqual(logical_index, 1)
-        self.assertEqual(environment["NV_GPU_INDEX"], "1")
-        self.assertEqual(arguments[-1], "cuda:1")
+        self.assertEqual(logical_index, 0)
+        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-one")
+        self.assertEqual(environment["NV_GPU_INDEX"], "0")
+        self.assertIn("--/renderer/activeGpu=1", arguments)
 
 
 if __name__ == "__main__":
