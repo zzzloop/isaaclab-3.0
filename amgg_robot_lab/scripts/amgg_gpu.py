@@ -37,6 +37,10 @@ def _has_device_argument(arguments: Sequence[str]) -> bool:
     return any(argument == "--device" or argument.startswith("--device=") for argument in arguments[1:])
 
 
+def _is_headless(arguments: Sequence[str]) -> bool:
+    return any(argument == "--headless" or argument.startswith("--headless=") for argument in arguments[1:])
+
+
 def _parse_physical_indices(value: str, variable_name: str, *, allow_empty: bool = False) -> list[int]:
     indices = [int(item.strip()) for item in value.split(",") if item.strip()]
     if not indices and not allow_empty:
@@ -75,13 +79,14 @@ def configure_preferred_gpu(
 ) -> int | None:
     """Pin CUDA, PhysX, RTX, and CloudXR to one physical GPU.
 
-    The AMGG default is physical GPU 1. Physical GPUs 2 and 3 are quarantined
-    by default because they have produced repeated driver-level Xid failures on
-    the target workstation. Camera recording uses CUDA/RTX
-    external-memory interop, so CUDA and Kit must use the same global
-    PCI-order device namespace. The selected GPU is explicit for CUDA/PhysX,
-    Kit/RTX, and CloudXR, while multi-GPU rendering is disabled. Passing
-    ``--device`` opts out so an explicit operator choice is preserved.
+    Windowed launches default to physical GPU 0 because it owns the workstation
+    Xorg presentation queue. Headless launches default to physical GPU 1.
+    Physical GPUs 2 and 3 are quarantined by default because they have produced
+    repeated driver-level Xid failures on the target workstation. Camera
+    recording uses CUDA/RTX external-memory interop, so CUDA and Kit must use
+    the same global PCI-order device namespace. The selected GPU is explicit
+    for CUDA/PhysX, Kit/RTX, and CloudXR, while multi-GPU rendering is disabled.
+    Passing ``--device`` opts out so an explicit operator choice is preserved.
 
     Args:
         arguments: Process argument vector to update. Defaults to :attr:`sys.argv`.
@@ -98,8 +103,10 @@ def configure_preferred_gpu(
         print("[AMGG] Explicit --device detected; automatic physical-GPU selection is disabled.", flush=True)
         return None
 
+    launch_mode = "headless" if _is_headless(arguments) else "windowed"
+    default_preferred_index = "1" if launch_mode == "headless" else "0"
     try:
-        preferred_index = int(environment.get("AMGG_PREFERRED_GPU", "1"))
+        preferred_index = int(environment.get("AMGG_PREFERRED_GPU", default_preferred_index))
         allowed_indices = _parse_physical_indices(environment.get("AMGG_ALLOWED_GPUS", "0,1"), "AMGG_ALLOWED_GPUS")
         quarantined_indices = _parse_physical_indices(
             environment.get("AMGG_QUARANTINED_GPUS", "2,3"),
@@ -164,6 +171,7 @@ def configure_preferred_gpu(
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
         f"CUDA/PhysX/Kit/RTX/CloudXR PCI-order GPU {selected_index}; multi-GPU rendering disabled; "
+        f"launch mode={launch_mode}; "
         f"allowed physical GPUs={allowed_indices}; quarantined physical GPUs={quarantined_indices}; "
         f"renderer map: {renderer_mapping}.",
         flush=True,

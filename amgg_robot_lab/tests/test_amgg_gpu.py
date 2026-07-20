@@ -103,7 +103,7 @@ class TestAmggGpu(unittest.TestCase):
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=2", kit_args)
 
-    def test_default_uses_physical_gpu_one(self) -> None:
+    def test_windowed_default_uses_display_gpu_zero(self) -> None:
         inventory = [
             amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
             amgg_gpu._GpuInfo(1, "GPU-one", "00000000:4B:00.0"),
@@ -111,6 +111,24 @@ class TestAmggGpu(unittest.TestCase):
             amgg_gpu._GpuInfo(3, "GPU-three", "00000000:CA:00.0"),
         ]
         arguments = ["amgg_record_demos.py", "--xr", "--enable_cameras"]
+        environment = {}
+
+        logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+
+        self.assertEqual(logical_index, 0)
+        self.assertEqual(environment["NV_GPU_INDEX"], "0")
+        self.assertIn("cuda:0", arguments)
+        kit_args = arguments[arguments.index("--kit_args") + 1]
+        self.assertIn("--/renderer/activeGpu=0", kit_args)
+
+    def test_headless_default_uses_compute_gpu_one(self) -> None:
+        inventory = [
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(1, "GPU-one", "00000000:4B:00.0"),
+            amgg_gpu._GpuInfo(2, "GPU-two", "00000000:B1:00.0"),
+            amgg_gpu._GpuInfo(3, "GPU-three", "00000000:CA:00.0"),
+        ]
+        arguments = ["amgg_smoke_test.py", "--headless"]
         environment = {}
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)

@@ -8,5 +8,6 @@ Fixed
 Changed
 ^^^^^^^
 
-* Changed the default recording device to physical GPU 1 and quarantined
-  physical GPUs 2 and 3 after repeated driver-level Xid failures.
+* Changed windowed recording to physical GPU 0, which owns the workstation
+  presentation queue, and headless recording to physical GPU 1. Physical GPUs
+  2 and 3 remain quarantined after repeated driver-level Xid failures.
