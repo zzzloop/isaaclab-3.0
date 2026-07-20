@@ -120,6 +120,10 @@ class TestAmggGpu(unittest.TestCase):
         self.assertIn("cuda:0", arguments)
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=0", kit_args)
+        self.assertIn("--/app/asyncRendering=false", kit_args)
+        self.assertIn("--/app/asyncRenderingLowLatency=false", kit_args)
+        self.assertIn("--/exts/isaacsim.core.throttling/enable_async=false", kit_args)
+        self.assertIn("--/omni/replicator/asyncRendering=false", kit_args)
 
     def test_headless_default_uses_compute_gpu_one(self) -> None:
         inventory = [
@@ -138,6 +142,20 @@ class TestAmggGpu(unittest.TestCase):
         self.assertIn("cuda:1", arguments)
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=1", kit_args)
+
+    def test_xr_without_sensor_cameras_keeps_low_latency_rendering(self) -> None:
+        inventory = [
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(1, "GPU-one", "00000000:4B:00.0"),
+        ]
+        arguments = ["amgg_teleop.py", "--xr"]
+        environment = {}
+
+        amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+
+        kit_args = arguments[arguments.index("--kit_args") + 1]
+        self.assertNotIn("--/app/asyncRendering=false", kit_args)
+        self.assertNotIn("--/exts/isaacsim.core.throttling/enable_async=false", kit_args)
 
     def test_quarantined_gpu_is_rejected_before_launch(self) -> None:
         arguments = ["amgg_record_demos.py", "--xr", "--enable_cameras"]

@@ -37,8 +37,12 @@ def _has_device_argument(arguments: Sequence[str]) -> bool:
     return any(argument == "--device" or argument.startswith("--device=") for argument in arguments[1:])
 
 
+def _has_flag(arguments: Sequence[str], name: str) -> bool:
+    return any(argument == name or argument.startswith(f"{name}=") for argument in arguments[1:])
+
+
 def _is_headless(arguments: Sequence[str]) -> bool:
-    return any(argument == "--headless" or argument.startswith("--headless=") for argument in arguments[1:])
+    return _has_flag(arguments, "--headless")
 
 
 def _parse_physical_indices(value: str, variable_name: str, *, allow_empty: bool = False) -> list[int]:
@@ -104,6 +108,7 @@ def configure_preferred_gpu(
         return None
 
     launch_mode = "headless" if _is_headless(arguments) else "windowed"
+    uses_xr_cameras = _has_flag(arguments, "--xr") and _has_flag(arguments, "--enable_cameras")
     default_preferred_index = "1" if launch_mode == "headless" else "0"
     try:
         preferred_index = int(environment.get("AMGG_PREFERRED_GPU", default_preferred_index))
@@ -159,19 +164,34 @@ def configure_preferred_gpu(
     # AppLauncher accepts raw Kit settings through one parsed ``--kit_args``
     # value. Injecting the settings as top-level arguments makes applications
     # such as record_demos.py reject them after Kit starts.
-    kit_args = " ".join(
-        (
-            f"--/renderer/activeGpu={selected_index}",
-            "--/renderer/multiGpu/enabled=false",
-            "--/renderer/multiGpu/autoEnable=false",
-            "--/renderer/multiGpu/maxGpuCount=1",
+    kit_settings = [
+        f"--/renderer/activeGpu={selected_index}",
+        "--/renderer/multiGpu/enabled=false",
+        "--/renderer/multiGpu/autoEnable=false",
+        "--/renderer/multiGpu/maxGpuCount=1",
+    ]
+    if uses_xr_cameras:
+        # XR normally enables low-latency asynchronous rendering. Sensor
+        # cameras create Replicator render products backed by CUDA/Vulkan
+        # external memory, and toggling asynchronous rendering while those
+        # products initialize has produced repeatable Xid 31 MMU faults across
+        # multiple physical GPUs. Keep the recording path synchronous and stop
+        # the throttling extension from turning async rendering back on.
+        kit_settings.extend(
+            [
+                "--/app/asyncRendering=false",
+                "--/app/asyncRenderingLowLatency=false",
+                "--/exts/isaacsim.core.throttling/enable_async=false",
+                "--/omni/replicator/asyncRendering=false",
+            ]
         )
-    )
+    kit_args = " ".join(kit_settings)
     arguments.extend(["--device", f"cuda:{selected_index}", "--kit_args", kit_args])
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
         f"CUDA/PhysX/Kit/RTX/CloudXR PCI-order GPU {selected_index}; multi-GPU rendering disabled; "
         f"launch mode={launch_mode}; "
+        f"XR camera rendering={'synchronous' if uses_xr_cameras else 'default'}; "
         f"allowed physical GPUs={allowed_indices}; quarantined physical GPUs={quarantined_indices}; "
         f"renderer map: {renderer_mapping}.",
         flush=True,
