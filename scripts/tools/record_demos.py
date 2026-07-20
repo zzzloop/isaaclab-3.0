@@ -600,7 +600,7 @@ def run_simulation_loop(
                 # Update demo count if it has changed
                 if env.recorder_manager.exported_successful_episode_count > current_recorded_demo_count:
                     current_recorded_demo_count = env.recorder_manager.exported_successful_episode_count
-                    label_text = f"Recorded {current_recorded_demo_count} successful demonstrations."
+                    label_text = f"SUCCESS! Demo {current_recorded_demo_count} saved. Resetting..."
                     print(label_text)
 
                 # Check if we've reached the desired number of demos

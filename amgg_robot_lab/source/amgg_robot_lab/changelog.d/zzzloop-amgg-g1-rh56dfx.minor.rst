@@ -19,3 +19,7 @@ Changed
   0.42 m forward-reach limit with margin for randomized resets.
 * Changed G1 success tolerances for practical PICO data collection and added
   visible success or failure feedback to the teleoperation loop.
+* Changed the bimanual and precision task spawn layouts to remove initial
+  object-to-fixture and object-to-table penetration.
+* Changed the XR recording status to show an explicit per-demo success and
+  reset message in the headset.

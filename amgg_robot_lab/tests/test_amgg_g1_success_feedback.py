@@ -76,6 +76,7 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
         self.assertIn("Set to 0 for infinite", recorder_source)
         self.assertIn("exported_successful_episode_count >= args_cli.num_demos", recorder_source)
         self.assertIn("Episode exported; resetting for the next demonstration", recorder_source)
+        self.assertIn("SUCCESS! Demo {current_recorded_demo_count} saved. Resetting...", recorder_source)
 
 
 if __name__ == "__main__":

@@ -59,6 +59,31 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertIn('AMGG_G1_TASK_LAYOUTS["precision_insert"]', scene_source)
         self.assertIn('layout["goal"]', terms_source)
 
+    def test_bimanual_spawn_is_separated_from_supports(self) -> None:
+        layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["bimanual_reorient"]
+        reset_y_half_range = self.workspace["AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M"]
+        bar_near_edge = layout["object"][1] - reset_y_half_range - 0.055 / 2
+        support_far_edge = max(layout["left_support"][1], layout["right_support"][1]) + 0.13 / 2
+        self.assertGreaterEqual(bar_near_edge - support_far_edge, 0.01)
+
+    def test_precision_spawn_and_fixture_have_clearance(self) -> None:
+        layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["precision_insert"]
+        table_top = 1.0
+        key_bottom = layout["object"][2] - 0.14 / 2
+        self.assertGreaterEqual(key_bottom - table_top, 0.005)
+
+        left_inner_edge = layout["guide_left"][0] + 0.025 / 2
+        right_inner_edge = layout["guide_right"][0] - 0.025 / 2
+        cross_wall_left_edge = layout["guide_near"][0] - 0.060 / 2
+        cross_wall_right_edge = layout["guide_near"][0] + 0.060 / 2
+        self.assertGreaterEqual(cross_wall_left_edge - left_inner_edge, 0.002)
+        self.assertGreaterEqual(right_inner_edge - cross_wall_right_edge, 0.002)
+
+        reset_x_half_range = self.workspace["AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M"]
+        key_right_edge = layout["object"][0] + reset_x_half_range + 0.045 / 2
+        nearest_fixture_edge = min(left_inner_edge, cross_wall_left_edge)
+        self.assertGreaterEqual(nearest_fixture_edge - key_right_edge, 0.02)
+
 
 if __name__ == "__main__":
     unittest.main()

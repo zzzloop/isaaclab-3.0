@@ -38,7 +38,7 @@ metadata 会明确记录 `hardware_calibration_required=true`。
 |---|---|---|---|
 | `Isaac-AMGG-G1-ClutterTransfer-v0` | 杂乱鲁棒性、空间泛化 | 橙色目标块进入绿色区域：XY 误差小于 90 mm、Z 误差小于 55 mm、线速度小于 0.15 m/s | 掉落、越界、非有限状态、关节异常高速、超时 |
 | `Isaac-AMGG-G1-BimanualReorient-v0` | 双臂协调、长物体重定向 | 蓝色长杆中心误差小于 80 mm，水平和长轴方向误差小于约 23°，线速度小于 0.15 m/s | 同上 |
-| `Isaac-AMGG-G1-PrecisionInsert-v0` | 接触丰富、窄容差插放 | 黄色键块 XY 误差小于 25 mm、Z 误差小于 40 mm、竖直误差小于约 23°、线速度小于 0.10 m/s | 同上 |
+| `Isaac-AMGG-G1-PrecisionInsert-v0` | 接触丰富、窄容差插放 | 黄色键块 XY 误差小于 25 mm、Z 误差小于 40 mm、竖直误差小于约 16°、线速度小于 0.10 m/s | 同上 |
 
 成功项统一命名为 `success`，可直接使用官方 `record_demos.py` 的连续成功帧门控。
 
@@ -189,7 +189,8 @@ mkdir -p datasets
 
 录制时单帧满足几何、姿态和速度条件还不算完成；必须连续满足 `--num_success_steps` 帧。
 终端出现 `Success condition met! Episode exported; resetting for the next demonstration.` 和递增的
-`Recorded N successful demonstrations.` 才表示第 N 条已成功写入，然后程序自动 reset 采集下一条。
+`SUCCESS! Demo N saved. Resetting...` 才表示第 N 条已成功写入，然后程序自动 reset 采集下一条。
+PICO 头显内同时显示 `SUCCESS! Demo N saved. Resetting...`，看到该提示才表示这一轮已保存成功。
 
 一条有效 episode 至少应包含：
 
