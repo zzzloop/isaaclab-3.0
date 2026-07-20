@@ -120,8 +120,8 @@ class TestAmggGpu(unittest.TestCase):
         self.assertIn("cuda:0", arguments)
         kit_args = arguments[arguments.index("--kit_args") + 1]
         self.assertIn("--/renderer/activeGpu=0", kit_args)
-        self.assertIn("--/app/asyncRendering=false", kit_args)
-        self.assertIn("--/app/asyncRenderingLowLatency=false", kit_args)
+        self.assertNotIn("--/app/asyncRendering=false", kit_args)
+        self.assertNotIn("--/app/asyncRenderingLowLatency=false", kit_args)
         self.assertIn("--/exts/isaacsim.core.throttling/enable_async=false", kit_args)
         self.assertIn("--/omni/replicator/asyncRendering=false", kit_args)
 

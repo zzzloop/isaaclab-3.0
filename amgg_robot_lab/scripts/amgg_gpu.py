@@ -137,6 +137,7 @@ def configure_preferred_gpu(
 
     launch_mode = "headless" if _is_headless(arguments) else "windowed"
     uses_xr_cameras = _has_flag(arguments, "--xr") and _has_flag(arguments, "--enable_cameras")
+    xr_camera_rendering = "default"
     default_preferred_index = "1" if launch_mode == "headless" else "0"
     try:
         preferred_index = int(environment.get("AMGG_PREFERRED_GPU", default_preferred_index))
@@ -207,19 +208,30 @@ def configure_preferred_gpu(
         # the throttling extension from turning async rendering back on.
         kit_settings.extend(
             [
-                "--/app/asyncRendering=false",
-                "--/app/asyncRenderingLowLatency=false",
                 "--/exts/isaacsim.core.throttling/enable_async=false",
                 "--/omni/replicator/asyncRendering=false",
             ]
         )
+        if launch_mode == "headless":
+            kit_settings.extend(
+                [
+                    "--/app/asyncRendering=false",
+                    "--/app/asyncRenderingLowLatency=false",
+                ]
+            )
+            xr_camera_rendering = "synchronous"
+        else:
+            # The window swapchain requires the XR app's asynchronous update
+            # path. Keep it enabled while making only Replicator sensor
+            # capture synchronous and preventing throttling from toggling it.
+            xr_camera_rendering = "windowed-safe"
     kit_args = " ".join(kit_settings)
     arguments.extend(["--device", f"cuda:{selected_index}", "--kit_args", kit_args])
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
         f"CUDA/PhysX/Kit/RTX/CloudXR PCI-order GPU {selected_index}; multi-GPU rendering disabled; "
         f"launch mode={launch_mode}; "
-        f"XR camera rendering={'synchronous' if uses_xr_cameras else 'default'}; "
+        f"XR camera rendering={xr_camera_rendering}; "
         f"allowed physical GPUs={allowed_indices}; quarantined physical GPUs={quarantined_indices}; "
         f"renderer map: {renderer_mapping}.",
         flush=True,
