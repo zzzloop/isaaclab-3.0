@@ -45,6 +45,28 @@ def _is_headless(arguments: Sequence[str]) -> bool:
     return _has_flag(arguments, "--headless")
 
 
+def _remove_explicit_visualizer(arguments: list[str]) -> bool:
+    """Remove visualizer CLI options that conflict with deprecated headless mode."""
+    cleaned = [arguments[0]]
+    removed = False
+    index = 1
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument in {"--visualizer", "--viz"}:
+            removed = True
+            index += 2 if index + 1 < len(arguments) else 1
+            continue
+        if argument.startswith("--visualizer=") or argument.startswith("--viz="):
+            removed = True
+            index += 1
+            continue
+        cleaned.append(argument)
+        index += 1
+    if removed:
+        arguments[:] = cleaned
+    return removed
+
+
 def _parse_physical_indices(value: str, variable_name: str, *, allow_empty: bool = False) -> list[int]:
     indices = [int(item.strip()) for item in value.split(",") if item.strip()]
     if not indices and not allow_empty:
@@ -103,6 +125,12 @@ def configure_preferred_gpu(
     """
     arguments = sys.argv if arguments is None else arguments
     environment = os.environ if environment is None else environment
+    if _is_headless(arguments) and _remove_explicit_visualizer(arguments):
+        print(
+            "[AMGG] Removed explicit --visualizer/--viz from deprecated --headless mode; "
+            "XR will auto-inject KitVisualizer for app-update pumping.",
+            flush=True,
+        )
     if _has_device_argument(arguments):
         print("[AMGG] Explicit --device detected; automatic physical-GPU selection is disabled.", flush=True)
         return None

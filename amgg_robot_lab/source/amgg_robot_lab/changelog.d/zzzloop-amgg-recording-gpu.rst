@@ -7,6 +7,9 @@ Fixed
 * Fixed repeatable Xid 31 faults during XR camera recording by disabling
   asynchronous rendering and preventing the throttling extension from
   re-enabling it while sensor render products initialize.
+* Fixed headless XR recording startup by removing the explicit Kit visualizer
+  option that conflicts with deprecated ``--headless`` handling. XR still
+  auto-injects the Kit visualizer required for app-update pumping.
 
 Changed
 ^^^^^^^
