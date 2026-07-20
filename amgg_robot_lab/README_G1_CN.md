@@ -227,6 +227,7 @@ python ~/zzk_data/IsaacLab/amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobo
   ~/zzk_data/IsaacLab/datasets/lerobot_amgg_g1_clutter_transfer \
   --task Isaac-AMGG-G1-ClutterTransfer-v0 \
   --repo_id local/amgg_g1_clutter_transfer \
+  --source_fps 60 \
   --fps 30
 ```
 
