@@ -27,6 +27,8 @@ optional arguments:
     --num_demos               Number of demonstrations to record. (default: 0)
     --num_success_steps       Number of continuous steps with task success for concluding a demo as successful.
                               (default: 10)
+    --auto_start_recording    Start stepping and recording as soon as teleop actions are available instead of
+                              waiting for a remote START event. (default: False)
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -64,6 +66,15 @@ parser.add_argument(
     type=int,
     default=10,
     help="Number of continuous steps with task success for concluding a demo as successful. Default is 10.",
+)
+parser.add_argument(
+    "--auto_start_recording",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help=(
+        "Start stepping and recording as soon as teleop actions are available. This is useful for XR clients that"
+        " provide controller poses but do not send a START control event."
+    ),
 )
 parser.add_argument(
     "--cloudxr_env",
@@ -153,6 +164,35 @@ logger = logging.getLogger(__name__)
 _CLOUDXR_ENV_SHORTHANDS: dict[str, str] = {}
 
 
+def _update_recording_active_state(
+    running_recording_instance: bool,
+    remote_is_active: bool | None,
+    auto_start_recording: bool,
+    remote_recording_started: bool,
+) -> tuple[bool, bool]:
+    """Merge remote START/STOP state with the local auto-start option.
+
+    XR control pipelines commonly report an initial STOPPED state before the
+    client has sent any control message. Auto-start recording ignores only
+    that initial inactive state. Once a real START state has been observed,
+    subsequent STOP states pause recording normally.
+
+    Args:
+        running_recording_instance: Whether environment stepping is currently enabled.
+        remote_is_active: Latest remote active state, or ``None`` when unavailable.
+        auto_start_recording: Whether recording was requested to start locally.
+        remote_recording_started: Whether a remote START state has already been observed.
+
+    Returns:
+        Updated recording-active and remote-start-observed states.
+    """
+    if remote_is_active is True:
+        return True, True
+    if remote_is_active is False and (not auto_start_recording or remote_recording_started):
+        return False, remote_recording_started
+    return running_recording_instance, remote_recording_started
+
+
 def _resolve_cloudxr_env(value: str | None) -> str | None:
     """Resolve ``--cloudxr_env`` shorthands to absolute ``.env`` file paths.
 
@@ -214,7 +254,7 @@ def setup_output_directories() -> tuple[str, str]:
             - output_file_name: The filename (without extension) for the dataset
     """
     # get directory path and file name (without extension) from cli arguments
-    output_dir = os.path.dirname(args_cli.dataset_file)
+    output_dir = os.path.dirname(args_cli.dataset_file) or "."
     output_file_name = os.path.splitext(os.path.basename(args_cli.dataset_file))[0]
 
     # create directory if it does not exist
@@ -440,7 +480,7 @@ def process_success_condition(env: gym.Env, success_term: object | None, success
                 [0], torch.tensor([[True]], dtype=torch.bool, device=env.device)
             )
             env.recorder_manager.export_episodes([0])
-            print("Success condition met! Recording completed.")
+            print("Success condition met! Episode exported; resetting for the next demonstration.")
             return success_step_count, True
     else:
         success_step_count = 0
@@ -508,8 +548,10 @@ def run_simulation_loop(
     current_recorded_demo_count = 0
     success_step_count = 0
     should_reset_recording_instance = False
-    # For IsaacTeleop or XR, default to inactive until START is triggered
-    running_recording_instance = not (args_cli.xr or use_isaac_teleop)
+    remote_recording_started = False
+    # XR normally waits for START. --auto_start_recording supports clients
+    # that provide controller actions without sending control messages.
+    running_recording_instance = args_cli.auto_start_recording or not (args_cli.xr or use_isaac_teleop)
 
     # Callback closures for the teleop device
     def reset_recording_instance():
@@ -539,13 +581,16 @@ def run_simulation_loop(
 
     teleop_interface = setup_teleop_device(teleoperation_callbacks, use_isaac_teleop)
 
+    if args_cli.auto_start_recording:
+        print("Recording will start automatically when the first teleop action is available.")
+
     label_text = f"Recorded {current_recorded_demo_count} successful demonstrations."
     instruction_display = setup_ui(label_text, env)
 
     def inner_loop():
         """Inner loop function with access to nonlocal variables."""
         nonlocal current_recorded_demo_count, success_step_count, should_reset_recording_instance
-        nonlocal running_recording_instance, label_text
+        nonlocal running_recording_instance, remote_recording_started, label_text
 
         # Reset before starting
         env.sim.reset()
@@ -566,8 +611,12 @@ def run_simulation_loop(
 
                 if use_isaac_teleop:
                     ctrl = poll_control_events(teleop_interface)
-                    if ctrl.is_active is not None:
-                        running_recording_instance = ctrl.is_active
+                    running_recording_instance, remote_recording_started = _update_recording_active_state(
+                        running_recording_instance,
+                        ctrl.is_active,
+                        args_cli.auto_start_recording,
+                        remote_recording_started,
+                    )
                     if ctrl.should_reset:
                         should_reset_recording_instance = True
 
@@ -586,21 +635,22 @@ def run_simulation_loop(
                             subtasks = obv[0].get("subtask_terms")
                         elif subtasks:
                             show_subtask_instructions(instruction_display, subtasks, obv, env.cfg)
+                    # Only advance the consecutive-success counter after a
+                    # recorded environment step. A paused XR render loop must
+                    # never complete an episode without adding new frames.
+                    success_step_count_new, success_reset_needed = process_success_condition(
+                        env, success_term, success_step_count
+                    )
+                    success_step_count = success_step_count_new
+                    if success_reset_needed:
+                        should_reset_recording_instance = True
                 else:
                     env.sim.render()
-
-                # Check for success condition
-                success_step_count_new, success_reset_needed = process_success_condition(
-                    env, success_term, success_step_count
-                )
-                success_step_count = success_step_count_new
-                if success_reset_needed:
-                    should_reset_recording_instance = True
 
                 # Update demo count if it has changed
                 if env.recorder_manager.exported_successful_episode_count > current_recorded_demo_count:
                     current_recorded_demo_count = env.recorder_manager.exported_successful_episode_count
-                    label_text = f"Recorded {current_recorded_demo_count} successful demonstrations."
+                    label_text = f"SUCCESS! Demo {current_recorded_demo_count} saved. Resetting..."
                     print(label_text)
 
                 # Check if we've reached the desired number of demos

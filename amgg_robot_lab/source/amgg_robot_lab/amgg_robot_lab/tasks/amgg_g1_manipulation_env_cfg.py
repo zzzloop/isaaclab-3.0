@@ -29,16 +29,38 @@ from amgg_robot_lab.contracts import (
 )
 
 from . import mdp
+from .amgg_g1_workspace import (
+    AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M,
+    AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M,
+    AMGG_G1_TASK_LAYOUTS,
+    AMGG_G1_TASK_OBJECT_RESET_RANGES,
+    AMGG_G1_TASK_OBJECT_ROTATIONS,
+)
+
+_CLUTTER_LAYOUT = AMGG_G1_TASK_LAYOUTS["clutter_transfer"]
+_BIMANUAL_LAYOUT = AMGG_G1_TASK_LAYOUTS["bimanual_reorient"]
+_PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["precision_insert"]
 
 
-def _dynamic_material(color: tuple[float, float, float], mass: float = 0.10) -> dict:
+def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> dict:
     return {
         "visual_material": sim_utils.PreviewSurfaceCfg(diffuse_color=color, roughness=0.65),
-        "physics_material": sim_utils.RigidBodyMaterialCfg(static_friction=1.15, dynamic_friction=0.9),
+        "physics_material": sim_utils.RigidBodyMaterialCfg(
+            static_friction=1.15,
+            dynamic_friction=0.9,
+            restitution=0.0,
+        ),
         "rigid_props": sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            linear_damping=0.08,
+            angular_damping=0.15,
+            max_linear_velocity=3.0,
+            max_angular_velocity=720.0,
             solver_position_iteration_count=16,
-            solver_velocity_iteration_count=4,
-            max_depenetration_velocity=2.0,
+            solver_velocity_iteration_count=8,
+            max_depenetration_velocity=0.25,
+            max_contact_impulse=0.5,
+            enable_gyroscopic_forces=True,
         ),
         "collision_props": sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
         "mass_props": sim_utils.MassPropertiesCfg(mass=mass),
@@ -92,7 +114,40 @@ def _camera(prim_path: str, position, rotation) -> CameraCfg:
 
 @configclass
 class AmggG1BaseSceneCfg(ObjectTableSceneCfg):
-    """Official fixed-base G1, table, RGB cameras, and finger contacts."""
+    """Official fixed-base G1 with a clean table, RGB cameras, and finger contacts."""
+
+    # Replace the inherited warehouse packing-table USD.  Its trays and crates
+    # occlude task objects and make controlled visual-domain studies difficult.
+    packing_table = _static_box(
+        "{ENV_REGEX_NS}/WorkTable",
+        (0.0, 0.55, 0.955),
+        (1.10, 0.82, 0.09),
+        (0.34, 0.37, 0.42),
+    )
+    table_leg_front_left = _static_box(
+        "{ENV_REGEX_NS}/TableLegFrontLeft",
+        (-0.48, 0.22, 0.455),
+        (0.06, 0.06, 0.91),
+        (0.20, 0.22, 0.25),
+    )
+    table_leg_front_right = _static_box(
+        "{ENV_REGEX_NS}/TableLegFrontRight",
+        (0.48, 0.22, 0.455),
+        (0.06, 0.06, 0.91),
+        (0.20, 0.22, 0.25),
+    )
+    table_leg_back_left = _static_box(
+        "{ENV_REGEX_NS}/TableLegBackLeft",
+        (-0.48, 0.88, 0.455),
+        (0.06, 0.06, 0.91),
+        (0.20, 0.22, 0.25),
+    )
+    table_leg_back_right = _static_box(
+        "{ENV_REGEX_NS}/TableLegBackRight",
+        (0.48, 0.88, 0.455),
+        (0.06, 0.06, 0.91),
+        (0.20, 0.22, 0.25),
+    )
 
     front_camera = _camera(
         "{ENV_REGEX_NS}/FrontCamera",
@@ -101,8 +156,8 @@ class AmggG1BaseSceneCfg(ObjectTableSceneCfg):
     )
     overview_camera = _camera(
         "{ENV_REGEX_NS}/OverviewCamera",
-        (1.05, -0.15, 1.55),
-        (-0.61237, -0.61237, 0.35355, 0.35355),
+        (1.05, 1.45, 1.55),
+        (-0.33545082, -0.74522487, 0.52550691, 0.23654836),
     )
     finger_contact = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/[LR]_.*",
@@ -118,20 +173,22 @@ class AmggG1ClutterTransferSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.24, 0.43, 1.035)),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=_CLUTTER_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["clutter_transfer"]
+        ),
         spawn=sim_utils.CuboidCfg(size=(0.070, 0.070, 0.070), **_dynamic_material((0.95, 0.28, 0.04))),
     )
     distractor_a = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/DistractorA",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.05, 0.46, 1.035)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_CLUTTER_LAYOUT["distractor_a"]),
         spawn=sim_utils.CuboidCfg(size=(0.065, 0.065, 0.070), **_dynamic_material((0.08, 0.35, 0.92))),
     )
     distractor_b = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/DistractorB",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.10, 0.40, 1.04)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=_CLUTTER_LAYOUT["distractor_b"]),
         spawn=sim_utils.CylinderCfg(radius=0.035, height=0.080, **_dynamic_material((0.88, 0.78, 0.08))),
     )
-    goal = _goal_marker((0.24, 0.62, 1.003), (0.17, 0.17, 0.008), (0.08, 0.85, 0.22))
+    goal = _goal_marker(_CLUTTER_LAYOUT["goal_marker"], (0.17, 0.17, 0.008), (0.08, 0.85, 0.22))
 
 
 @configclass
@@ -140,16 +197,21 @@ class AmggG1BimanualReorientSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.42, 1.035)),
-        spawn=sim_utils.CuboidCfg(size=(0.48, 0.055, 0.055), **_dynamic_material((0.06, 0.32, 0.95), 0.16)),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=_BIMANUAL_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["bimanual_reorient"]
+        ),
+        spawn=sim_utils.CuboidCfg(size=(0.30, 0.055, 0.055), **_dynamic_material((0.06, 0.32, 0.95), 0.32)),
     )
     left_support = _static_box(
-        "{ENV_REGEX_NS}/LeftSupport", (-0.19, 0.68, 1.055), (0.085, 0.13, 0.11), (0.16, 0.70, 0.78)
+        "{ENV_REGEX_NS}/LeftSupport", _BIMANUAL_LAYOUT["left_support"], (0.070, 0.080, 0.10), (0.16, 0.70, 0.78)
     )
     right_support = _static_box(
-        "{ENV_REGEX_NS}/RightSupport", (0.19, 0.68, 1.055), (0.085, 0.13, 0.11), (0.16, 0.70, 0.78)
+        "{ENV_REGEX_NS}/RightSupport",
+        _BIMANUAL_LAYOUT["right_support"],
+        (0.070, 0.080, 0.10),
+        (0.16, 0.70, 0.78),
     )
-    goal = _goal_marker((0.0, 0.68, 1.115), (0.52, 0.09, 0.008), (0.10, 0.85, 0.88))
+    goal = _goal_marker(_BIMANUAL_LAYOUT["goal_marker"], (0.34, 0.075, 0.008), (0.10, 0.85, 0.88))
 
 
 @configclass
@@ -158,16 +220,27 @@ class AmggG1PrecisionInsertSceneCfg(AmggG1BaseSceneCfg):
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.24, 0.43, 1.07)),
-        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.14), **_dynamic_material((0.96, 0.72, 0.05), 0.08)),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=_PRECISION_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["precision_insert"]
+        ),
+        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.14), **_dynamic_material((0.96, 0.72, 0.05), 0.20)),
     )
-    guide_left = _static_box("{ENV_REGEX_NS}/GuideLeft", (0.178, 0.62, 1.055), (0.025, 0.105, 0.11), (0.55, 0.12, 0.75))
+    guide_left = _static_box(
+        "{ENV_REGEX_NS}/GuideLeft", _PRECISION_LAYOUT["guide_left"], (0.025, 0.090, 0.11), (0.55, 0.12, 0.75)
+    )
     guide_right = _static_box(
-        "{ENV_REGEX_NS}/GuideRight", (0.262, 0.62, 1.055), (0.025, 0.105, 0.11), (0.55, 0.12, 0.75)
+        "{ENV_REGEX_NS}/GuideRight",
+        _PRECISION_LAYOUT["guide_right"],
+        (0.025, 0.090, 0.11),
+        (0.55, 0.12, 0.75),
     )
-    guide_near = _static_box("{ENV_REGEX_NS}/GuideNear", (0.22, 0.578, 1.055), (0.060, 0.025, 0.11), (0.55, 0.12, 0.75))
-    guide_far = _static_box("{ENV_REGEX_NS}/GuideFar", (0.22, 0.662, 1.055), (0.060, 0.025, 0.11), (0.55, 0.12, 0.75))
-    goal = _goal_marker((0.22, 0.62, 1.003), (0.055, 0.055, 0.008), (0.72, 0.18, 0.90))
+    guide_near = _static_box(
+        "{ENV_REGEX_NS}/GuideNear", _PRECISION_LAYOUT["guide_near"], (0.060, 0.018, 0.11), (0.55, 0.12, 0.75)
+    )
+    guide_far = _static_box(
+        "{ENV_REGEX_NS}/GuideFar", _PRECISION_LAYOUT["guide_far"], (0.060, 0.018, 0.11), (0.55, 0.12, 0.75)
+    )
+    goal = _goal_marker(_PRECISION_LAYOUT["goal_marker"], (0.055, 0.055, 0.008), (0.72, 0.18, 0.90))
 
 
 @configclass
@@ -259,7 +332,41 @@ class AmggG1EventsCfg:
         func=base_mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.035, 0.035), "y": (-0.035, 0.035), "yaw": (-0.25, 0.25)},
+            "pose_range": {
+                "x": (-AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M, AMGG_G1_OBJECT_RESET_X_HALF_RANGE_M),
+                "y": (-AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M, AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M),
+                "yaw": (-0.25, 0.25),
+            },
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+
+@configclass
+class BimanualEventsCfg(AmggG1EventsCfg):
+    """Reset the longitudinal bar without sweeping it into either hand."""
+
+    reset_object = EventTerm(
+        func=base_mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": AMGG_G1_TASK_OBJECT_RESET_RANGES["bimanual_reorient"],
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+
+@configclass
+class PrecisionEventsCfg(AmggG1EventsCfg):
+    """Keep the key outside the hands and the guide during reset."""
+
+    reset_object = EventTerm(
+        func=base_mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": AMGG_G1_TASK_OBJECT_RESET_RANGES["precision_insert"],
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
         },
@@ -297,8 +404,16 @@ class AmggG1BaseEnvCfg(PickPlaceG1InspireFTPEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.viewer.eye = (2.0, -1.2, 1.65)
+        # The task and the robot hands are both visible from this front
+        # three-quarter view.  Sensor cameras remain independent of the viewer.
+        self.viewer.eye = (1.45, 1.65, 1.55)
         self.viewer.lookat = (0.0, 0.55, 1.05)
+        # The data contract is 30 Hz: 120 Hz physics / 4 control substeps.
+        # Rendering once per environment step also removes redundant camera
+        # renders inherited from the official 20 Hz demonstration config.
+        self.decimation = 4
+        self.sim.render_interval = self.decimation
+        self.seed = 42
         self.num_rerenders_on_reset = 2
 
 
@@ -321,10 +436,15 @@ class AmggG1BimanualReorientEnvCfg(AmggG1BaseEnvCfg):
         num_envs=1, env_spacing=2.5, replicate_physics=True
     )
     observations: BimanualObservationsCfg = BimanualObservationsCfg()
+    events: BimanualEventsCfg = BimanualEventsCfg()
     terminations: BimanualTerminationsCfg = BimanualTerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
+        # The official absolute targets place the wrists at x=+/-0.1487 m,
+        # which overlaps this task's support fixture. Apply a deterministic
+        # task-local outward offset in the action term so PICO and replay agree.
+        self.actions.pink_ik_cfg.class_type = mdp.AmggG1BimanualPinkInverseKinematicsAction
         self.episode_length_s = 55.0
 
 
@@ -334,8 +454,33 @@ class AmggG1PrecisionInsertEnvCfg(AmggG1BaseEnvCfg):
         num_envs=1, env_spacing=2.5, replicate_physics=True
     )
     observations: PrecisionObservationsCfg = PrecisionObservationsCfg()
+    events: PrecisionEventsCfg = PrecisionEventsCfg()
     terminations: PrecisionTerminationsCfg = PrecisionTerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
         self.episode_length_s = 50.0
+
+
+class _AmggG1XrTimingMixin:
+    """Use a 60 Hz control/render loop for lower-latency XR teleoperation."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.decimation = 2
+        self.sim.render_interval = 2
+
+
+@configclass
+class AmggG1ClutterTransferXrEnvCfg(_AmggG1XrTimingMixin, AmggG1ClutterTransferEnvCfg):
+    """Low-latency XR variant of the clutter-transfer task."""
+
+
+@configclass
+class AmggG1BimanualReorientXrEnvCfg(_AmggG1XrTimingMixin, AmggG1BimanualReorientEnvCfg):
+    """Low-latency XR variant of the bimanual-reorientation task."""
+
+
+@configclass
+class AmggG1PrecisionInsertXrEnvCfg(_AmggG1XrTimingMixin, AmggG1PrecisionInsertEnvCfg):
+    """Low-latency XR variant of the precision-insertion task."""

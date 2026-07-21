@@ -36,9 +36,9 @@ metadata 会明确记录 `hardware_calibration_required=true`。
 
 | Task ID | 研究维度 | 自动成功条件 | 失败条件 |
 |---|---|---|---|
-| `Isaac-AMGG-G1-ClutterTransfer-v0` | 杂乱鲁棒性、空间泛化 | 橙色目标块进入绿色区域，XY/Z 达标且线/角速度稳定 | 掉落、越界、非有限状态、关节异常高速、超时 |
-| `Isaac-AMGG-G1-BimanualReorient-v0` | 双臂协调、长物体重定向 | 蓝色长杆稳定落在两支架上，中心、水平度和长轴方向同时达标 | 同上 |
-| `Isaac-AMGG-G1-PrecisionInsert-v0` | 接触丰富、窄容差插放 | 黄色键块进入紫色导向槽，XY 误差小于 15 mm、竖直且稳定 | 同上 |
+| `Isaac-AMGG-G1-ClutterTransfer-v0` | 杂乱鲁棒性、空间泛化 | 橙色目标块进入绿色区域：XY 误差小于 90 mm、Z 误差小于 55 mm、线速度小于 0.15 m/s | 掉落、越界、非有限状态、关节异常高速、超时 |
+| `Isaac-AMGG-G1-BimanualReorient-v0` | 双臂协调、长物体重定向 | 蓝色长杆中心误差小于 80 mm，水平和长轴方向误差小于约 23°，线速度小于 0.15 m/s | 同上 |
+| `Isaac-AMGG-G1-PrecisionInsert-v0` | 接触丰富、窄容差插放 | 黄色键块 XY 误差小于 25 mm、Z 误差小于 40 mm、竖直误差小于约 16°、线速度小于 0.10 m/s | 同上 |
 
 成功项统一命名为 `success`，可直接使用官方 `record_demos.py` 的连续成功帧门控。
 
@@ -71,13 +71,16 @@ Isaac Sim/PhysX/Pink/OpenXR 运行时验收。
 
 ## 4. 按顺序验收三个场景
 
-服务器有问题的物理 3 号卡不要暴露给进程。要在服务器桌面看到 Kit 窗口并同时使用 PICO，
-优先使用显示连接的逻辑 `cuda:0`：
+AMGG 的三个仿真入口会在 Isaac Sim 启动前读取 `nvidia-smi`，默认只暴露物理 0、1、2 号卡，
+并优先把物理 2 号卡（第三张卡）映射到 CUDA、Kit 和 CloudXR 的同一个逻辑序号。这样可避开
+有问题的物理 3 号卡，并减少跨 GPU 显存复制。启动前建议清除旧的手工设置：
 
 ```bash
-export CUDA_DEVICE_ORDER=PCI_BUS_ID
-export CUDA_VISIBLE_DEVICES=0,1,2
+unset CUDA_VISIBLE_DEVICES NV_GPU_INDEX
 ```
+
+启动日志应出现 `[AMGG] Preferred physical GPU 2 ...`。临时改用物理 1 号卡可执行
+`AMGG_PREFERRED_GPU=1 <启动命令>`；显式传入 `--device` 会关闭自动选择并保留操作者设置。
 
 先跑第一个场景 240 步并查看模型、桌面、相机和接触传感器是否正常：
 
@@ -87,7 +90,6 @@ export CUDA_VISIBLE_DEVICES=0,1,2
   --num_envs 1 \
   --num_steps 240 \
   --enable_cameras \
-  --device cuda:0 \
   --visualizer kit
 ```
 
@@ -112,42 +114,83 @@ Isaac-AMGG-G1-PrecisionInsert-v0
 先不录制，只测试控制：
 
 ```bash
+# 任务 1：杂乱物体搬运
 ./isaaclab.sh -p amgg_robot_lab/scripts/amgg_teleop.py \
-  --task Isaac-AMGG-G1-ClutterTransfer-v0 \
+  --task Isaac-AMGG-G1-ClutterTransfer-XR-v0 \
   --visualizer kit \
-  --device cuda:0 \
+  --xr \
+  --num_envs 1
+
+# 任务 2：双臂长杆重定向
+./isaaclab.sh -p amgg_robot_lab/scripts/amgg_teleop.py \
+  --task Isaac-AMGG-G1-BimanualReorient-XR-v0 \
+  --visualizer kit \
+  --xr \
+  --num_envs 1
+
+# 任务 3：精密插入
+./isaaclab.sh -p amgg_robot_lab/scripts/amgg_teleop.py \
+  --task Isaac-AMGG-G1-PrecisionInsert-XR-v0 \
+  --visualizer kit \
   --xr \
   --num_envs 1
 ```
 
+纯遥操达到任一成功条件时，终端会输出 `[SUCCESS] Task completed...`，环境自动重置后可继续操作；
+失败终止会输出具体 term。纯遥操不保存数据。
+
+`-XR-v0` 任务使用 60 Hz 控制和渲染循环；普通 `-v0` 任务保持原来的 30 Hz 数据验收配置。
 该入口直接使用官方 G1 Inspire PICO pipeline。纯遥操模式会由官方脚本暂时移除相机观测，
 以降低 XR 延迟；这不改变录制环境的相机 schema。先确认腕部方向、左右手、recenter 和手指
-开合，再进入录制。
+开合，再进入录制。XR 已连接并确认可控后，可把渲染器切换为 `RTX - Minimal`，并把 XR
+Render Resolution Multiplier 调到 `0.8`；不要在 XR 建立连接前切换。
 
 ## 6. 自动判定并录制 HDF5
 
-每个场景先只录 1 条：
+`--num_demos 0` 表示持续录制，不会因为成功一条而退出。每次达到成功条件后，当前 episode
+自动导出、计数加一并 reset；采集完成时按 `Ctrl+C` 正常结束。建议每次采集使用新的 HDF5 文件名。
 
 ```bash
 mkdir -p datasets
+
+# 任务 1：杂乱物体搬运，持续录制
 ./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
-  --task Isaac-AMGG-G1-ClutterTransfer-v0 \
+  --task Isaac-AMGG-G1-ClutterTransfer-XR-v0 \
   --visualizer kit \
-  --device cuda:0 \
   --xr \
   --enable_cameras \
-  --num_demos 1 \
+  --num_demos 0 \
   --num_success_steps 12 \
-  --step_hz 30 \
+  --step_hz 60 \
   --dataset_file ./datasets/amgg_g1_clutter_transfer.hdf5
+
+# 任务 2：双臂长杆重定向，持续录制
+./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
+  --task Isaac-AMGG-G1-BimanualReorient-XR-v0 \
+  --visualizer kit \
+  --xr \
+  --enable_cameras \
+  --num_demos 0 \
+  --num_success_steps 15 \
+  --step_hz 60 \
+  --dataset_file ./datasets/amgg_g1_bimanual_reorient.hdf5
+
+# 任务 3：精密插入，持续录制
+./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
+  --task Isaac-AMGG-G1-PrecisionInsert-XR-v0 \
+  --visualizer kit \
+  --xr \
+  --enable_cameras \
+  --num_demos 0 \
+  --num_success_steps 15 \
+  --step_hz 60 \
+  --dataset_file ./datasets/amgg_g1_precision_insert.hdf5
 ```
 
-另外两个任务建议分别使用：
-
-```text
-BimanualReorient: --num_success_steps 15, amgg_g1_bimanual_reorient.hdf5
-PrecisionInsert:  --num_success_steps 15, amgg_g1_precision_insert.hdf5
-```
+录制时单帧满足几何、姿态和速度条件还不算完成；必须连续满足 `--num_success_steps` 帧。
+终端出现 `Success condition met! Episode exported; resetting for the next demonstration.` 和递增的
+`SUCCESS! Demo N saved. Resetting...` 才表示第 N 条已成功写入，然后程序自动 reset 采集下一条。
+PICO 头显内同时显示 `SUCCESS! Demo N saved. Resetting...`，看到该提示才表示这一轮已保存成功。
 
 一条有效 episode 至少应包含：
 
@@ -184,6 +227,7 @@ python ~/zzk_data/IsaacLab/amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobo
   ~/zzk_data/IsaacLab/datasets/lerobot_amgg_g1_clutter_transfer \
   --task Isaac-AMGG-G1-ClutterTransfer-v0 \
   --repo_id local/amgg_g1_clutter_transfer \
+  --source_fps 60 \
   --fps 30
 ```
 

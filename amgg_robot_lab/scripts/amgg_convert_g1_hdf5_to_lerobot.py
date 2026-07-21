@@ -48,6 +48,22 @@ class G1EpisodeArrays:
         return self.state.shape[0]
 
 
+def downsample_g1_episode(episode: G1EpisodeArrays, stride: int) -> G1EpisodeArrays:
+    """Downsample every synchronized stream by an integer temporal stride."""
+    if stride < 1:
+        raise ValueError("G1 downsampling stride must be at least one.")
+    return G1EpisodeArrays(
+        name=episode.name,
+        state=episode.state[::stride],
+        action=episode.action[::stride],
+        motor_proxy=episode.motor_proxy[::stride],
+        tactile=episode.tactile[::stride],
+        tcp_pose=episode.tcp_pose[::stride],
+        environment_state=episode.environment_state[::stride],
+        images={name: frames[::stride] for name, frames in episode.images.items()},
+    )
+
+
 def _float_array(group: h5py.Group, key: str) -> np.ndarray:
     if key not in group:
         raise KeyError(f"Episode {group.name} is missing '{key}'.")
@@ -193,6 +209,7 @@ def convert_g1_dataset(
     task_id: str,
     repo_id: str,
     fps: int,
+    source_fps: int,
     action_source: str,
     include_images: bool,
     only_successful: bool,
@@ -200,6 +217,9 @@ def convert_g1_dataset(
     """Convert G1 simulation demonstrations into a local LeRobot dataset."""
     if output_dir.exists():
         raise FileExistsError(f"Output already exists: {output_dir}")
+    if source_fps < fps or source_fps % fps != 0:
+        raise ValueError(f"--source_fps ({source_fps}) must be an integer multiple of --fps ({fps}).")
+    temporal_stride = source_fps // fps
     spec = make_amgg_g1_dataset_spec(task_id, fps)
     episodes = load_g1_episodes(
         input_path,
@@ -207,6 +227,7 @@ def convert_g1_dataset(
         include_images=include_images,
         only_successful=only_successful,
     )
+    episodes = [downsample_g1_episode(episode, temporal_stride) for episode in episodes]
     try:
         from lerobot.datasets import LeRobotDataset
     except ImportError as error:
@@ -248,6 +269,8 @@ def convert_g1_dataset(
         "instruction": spec.instruction,
         "embodiment": AMGG_G1_EMBODIMENT,
         "fps": fps,
+        "source_fps": source_fps,
+        "temporal_stride": temporal_stride,
         "action_source": action_source,
         "action_space": "official_isaaclab_g1_inspire_sim_38d",
         "rh56dfx_hardware_action_dim": 26,
@@ -269,6 +292,12 @@ def main() -> None:
     parser.add_argument("--task", required=True, dest="task_id")
     parser.add_argument("--repo_id", default="local/amgg_g1_dataset")
     parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument(
+        "--source_fps",
+        type=int,
+        default=None,
+        help="Source HDF5 rate before synchronized downsampling; defaults to --fps for backward compatibility.",
+    )
     parser.add_argument("--action_source", choices=("raw", "processed"), default="raw")
     parser.add_argument("--include_images", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--only_successful", action=argparse.BooleanOptionalAction, default=True)
@@ -279,6 +308,7 @@ def main() -> None:
         task_id=args.task_id,
         repo_id=args.repo_id,
         fps=args.fps,
+        source_fps=args.source_fps if args.source_fps is not None else args.fps,
         action_source=args.action_source,
         include_images=args.include_images,
         only_successful=args.only_successful,

@@ -133,6 +133,35 @@ def _create_builtin_device(device_name: str, sensitivity: float) -> object | Non
     return None
 
 
+def _report_termination(env: gym.Env, teleop_interface: object) -> None:
+    """Print the active termination reason after an environment step.
+
+    Manager-based environments automatically reset terminated sub-environments
+    inside :meth:`env.step`.  Reporting the term here makes that otherwise
+    silent transition visible to a teleoperator.
+
+    Args:
+        env: Unwrapped manager-based environment.
+        teleop_interface: Device whose cross-step state must follow the reset.
+    """
+    active_terms = [
+        name
+        for name in env.termination_manager.active_terms
+        if bool(env.termination_manager.get_term(name).any().item())
+    ]
+    if not active_terms:
+        return
+
+    if "success" in active_terms or "object_reached_goal" in active_terms:
+        print("[SUCCESS] Task completed. Environment automatically reset; continue teleoperating.", flush=True)
+    else:
+        print(
+            f"[TERMINATION] {', '.join(active_terms)}. Environment automatically reset; retry the task.",
+            flush=True,
+        )
+    teleop_interface.reset()
+
+
 def main() -> None:
     """
     Run teleoperation with an Isaac Lab manipulation environment.
@@ -342,6 +371,7 @@ def main() -> None:
                         actions = action.repeat(env.num_envs, 1)
                         # apply actions
                         env.step(actions)
+                        _report_termination(env, teleop_interface)
                     else:
                         env.sim.render()
 
