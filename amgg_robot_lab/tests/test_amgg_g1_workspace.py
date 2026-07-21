@@ -28,7 +28,9 @@ class TestAmggG1Workspace(unittest.TestCase):
         reach_margin = self.workspace["AMGG_G1_REACH_MARGIN_M"]
         reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]
 
-        self.assertEqual(set(layouts), {"clutter_transfer", "bimanual_reorient", "precision_insert"})
+        self.assertEqual(
+            set(layouts), {"clutter_transfer", "random_cube_bucket", "bimanual_reorient", "precision_insert"}
+        )
         for task_slug, layout in layouts.items():
             for name, position in layout.items():
                 with self.subTest(task=task_slug, entity=name):
@@ -56,6 +58,7 @@ class TestAmggG1Workspace(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('AMGG_G1_TASK_LAYOUTS["clutter_transfer"]', scene_source)
+        self.assertIn('AMGG_G1_TASK_LAYOUTS["random_cube_bucket"]', scene_source)
         self.assertIn('AMGG_G1_TASK_LAYOUTS["bimanual_reorient"]', scene_source)
         self.assertIn('AMGG_G1_TASK_LAYOUTS["precision_insert"]', scene_source)
         self.assertIn('layout["goal"]', terms_source)
@@ -87,6 +90,7 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertGreaterEqual(layouts["bimanual_reorient"]["left_support"][1], 0.38)
         self.assertGreaterEqual(layouts["bimanual_reorient"]["right_support"][1], 0.38)
         self.assertGreaterEqual(layouts["precision_insert"]["goal"][1], 0.36)
+        self.assertLessEqual(layouts["random_cube_bucket"]["bucket_far"][1], 0.407)
 
     def test_bimanual_action_widens_both_wrists_only_for_task_two(self) -> None:
         offset = self.workspace["AMGG_G1_BIMANUAL_WRIST_X_OFFSET_M"]
@@ -125,6 +129,16 @@ class TestAmggG1Workspace(unittest.TestCase):
         key_right_edge = layout["object"][0] + reset_x_half_range + 0.045 / 2
         nearest_fixture_edge = min(left_inner_edge, cross_wall_left_edge)
         self.assertGreaterEqual(nearest_fixture_edge - key_right_edge, 0.02)
+
+    def test_random_cube_bucket_has_generalized_reachable_reset(self) -> None:
+        layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["random_cube_bucket"]
+        reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]["random_cube_bucket"]
+
+        self.assertLessEqual(layout["bucket_far"][1], 0.407)
+        self.assertGreaterEqual(reset_ranges["x"][1] - reset_ranges["x"][0], 0.16)
+        self.assertGreaterEqual(reset_ranges["y"][1] - reset_ranges["y"][0], 0.08)
+        self.assertGreater(layout["goal"][0], layout["object"][0])
+        self.assertGreater(layout["goal"][1], layout["object"][1])
 
 
 if __name__ == "__main__":

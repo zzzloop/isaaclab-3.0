@@ -38,6 +38,11 @@ AMGG_G1_TASK_OBJECT_RESET_RANGES: dict[str, dict[str, tuple[float, float]]] = {
         "y": (-0.008, 0.008),
         "yaw": (-0.12, 0.12),
     },
+    "random_cube_bucket": {
+        "x": (-0.090, 0.090),
+        "y": (-0.045, 0.045),
+        "yaw": (-0.785, 0.785),
+    },
 }
 
 # Isaac Lab quaternion convention is (w, x, y, z).  Task two starts with
@@ -47,6 +52,7 @@ AMGG_G1_TASK_OBJECT_ROTATIONS: dict[str, tuple[float, float, float, float]] = {
     "clutter_transfer": (1.0, 0.0, 0.0, 0.0),
     "bimanual_reorient": (0.70710678, 0.0, 0.0, 0.70710678),
     "precision_insert": (1.0, 0.0, 0.0, 0.0),
+    "random_cube_bucket": (1.0, 0.0, 0.0, 0.0),
 }
 
 
@@ -77,5 +83,17 @@ AMGG_G1_TASK_LAYOUTS: dict[str, dict[str, tuple[float, float, float]]] = {
         "guide_far": (0.040, 0.4065, 1.055),
         "goal": (0.040, 0.370, 1.070),
         "goal_marker": (0.040, 0.370, 1.003),
+    },
+    "random_cube_bucket": {
+        # The cube reset range intentionally spans a larger tabletop patch for
+        # generalization while the bucket fixture stays inside the observed
+        # forward reach limit.
+        "object": (-0.12, 0.255, 1.030),
+        "bucket_left": (0.009, 0.345, 1.050),
+        "bucket_right": (0.151, 0.345, 1.050),
+        "bucket_near": (0.080, 0.294, 1.050),
+        "bucket_far": (0.080, 0.396, 1.050),
+        "goal": (0.080, 0.345, 1.030),
+        "goal_marker": (0.080, 0.345, 1.003),
     },
 }

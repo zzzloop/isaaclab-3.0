@@ -201,7 +201,7 @@ ControllerTracker initialized (left + right)
 
 ## 8. 自动判定录制
 
-### 当前三个 G1 XR 任务
+### 当前四个 G1 XR 任务
 
 `amgg_record_demos.py` 现在会为 AMGG 自动启用录制，不再要求 PICO 客户端先发送额外的 `START` 消息；当第一帧有效 controller action 到达时即开始 `env.step()` 和 HDF5 记录。若需要恢复官方的远端 START/STOP 门控，可显式加 `--no-auto_start_recording`。
 
@@ -219,6 +219,16 @@ mkdir -p datasets
   --num_demos 1 \
   --num_success_steps 12 \
   --dataset_file ./datasets/amgg_g1_clutter_transfer_rgb.hdf5
+
+# 任务四：随机方块入桶
+./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
+  --task Isaac-AMGG-G1-RandomCubeBucket-XR-v0 \
+  --visualizer kit \
+  --xr \
+  --enable_cameras \
+  --num_demos 1 \
+  --num_success_steps 12 \
+  --dataset_file ./datasets/amgg_g1_random_cube_bucket_rgb.hdf5
 
 # 任务二：双臂长杆重定向
 ./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
@@ -241,7 +251,7 @@ mkdir -p datasets
   --dataset_file ./datasets/amgg_g1_precision_insert_rgb.hdf5
 ```
 
-三个 XR 配置运行在 60 Hz；`--step_hz` 在 XR/IsaacTeleop 路径中不会限速，因此无需填写。任务满足连续成功步数后，脚本会打印 `Episode exported` 和 `Demo N saved`，然后自动 reset。G1 HDF5 至少应包含 38-D `actions`/`processed_actions`、53-D `obs/robot_joint_pos`、12-D `obs/tactile`、左右 EEF 位姿、任务状态，以及 `obs/image_front` 和 `obs/image_overview` 两路 RGB。
+四个 XR 配置运行在 60 Hz；`--step_hz` 在 XR/IsaacTeleop 路径中不会限速，因此无需填写。任务满足连续成功步数后，脚本会打印 `Episode exported` 和 `Demo N saved`，然后自动 reset。G1 HDF5 至少应包含 38-D `actions`/`processed_actions`、53-D `obs/robot_joint_pos`、12-D `obs/tactile`、左右 EEF 位姿、任务状态，以及 `obs/image_front` 和 `obs/image_overview` 两路 RGB。
 
 ### 旧版 AMGG 23-DoF 任务
 
@@ -307,7 +317,7 @@ pip install lerobot h5py numpy
 pip install -e ~/zzk_data/IsaacLab/amgg_robot_lab/source/amgg_robot_lab
 ```
 
-当前三个 G1 XR 任务必须使用 `amgg_convert_g1_hdf5_to_lerobot.py`，不能使用旧的 23/21 维转换器。录制源是 60 Hz，下面统一同步降采样为 30 Hz LeRobot 数据：
+当前四个 G1 XR 任务必须使用 `amgg_convert_g1_hdf5_to_lerobot.py`，不能使用旧的 23/21 维转换器。录制源是 60 Hz，下面统一同步降采样为 30 Hz LeRobot 数据：
 
 ```bash
 # 任务一：杂乱物体搬运
@@ -316,6 +326,16 @@ python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
   datasets/lerobot_amgg_g1_clutter_transfer \
   --task Isaac-AMGG-G1-ClutterTransfer-v0 \
   --repo_id local/amgg_g1_clutter_transfer \
+  --source_fps 60 \
+  --fps 30 \
+  --action_source raw
+
+# 任务四：随机方块入桶
+python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
+  datasets/amgg_g1_random_cube_bucket_rgb.hdf5 \
+  datasets/lerobot_amgg_g1_random_cube_bucket \
+  --task Isaac-AMGG-G1-RandomCubeBucket-v0 \
+  --repo_id local/amgg_g1_random_cube_bucket \
   --source_fps 60 \
   --fps 30 \
   --action_source raw

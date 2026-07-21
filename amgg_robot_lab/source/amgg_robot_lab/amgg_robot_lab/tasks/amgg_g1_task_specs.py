@@ -30,6 +30,14 @@ AMGG_G1_TASK_SPECS = (
         max_episode_seconds=45.0,
     ),
     AmggG1TaskSpec(
+        task_id="Isaac-AMGG-G1-RandomCubeBucket-v0",
+        slug="random_cube_bucket",
+        instruction="Pick the randomized orange cube and drop it stably inside the green bucket.",
+        research_axis="initial-state generalization and container placement",
+        success_hold_steps=12,
+        max_episode_seconds=45.0,
+    ),
+    AmggG1TaskSpec(
         task_id="Isaac-AMGG-G1-BimanualReorient-v0",
         slug="bimanual_reorient",
         instruction="Use both hands to reorient the blue bar and place it level across the two supports.",

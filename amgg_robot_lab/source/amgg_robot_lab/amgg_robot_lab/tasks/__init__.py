@@ -32,6 +32,11 @@ _register(
     module_name="amgg_g1_manipulation_env_cfg",
 )
 _register(
+    "Isaac-AMGG-G1-RandomCubeBucket-v0",
+    "AmggG1RandomCubeBucketEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
+_register(
     "Isaac-AMGG-G1-BimanualReorient-v0",
     "AmggG1BimanualReorientEnvCfg",
     module_name="amgg_g1_manipulation_env_cfg",
@@ -44,6 +49,11 @@ _register(
 _register(
     "Isaac-AMGG-G1-ClutterTransfer-XR-v0",
     "AmggG1ClutterTransferXrEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
+_register(
+    "Isaac-AMGG-G1-RandomCubeBucket-XR-v0",
+    "AmggG1RandomCubeBucketXrEnvCfg",
     module_name="amgg_g1_manipulation_env_cfg",
 )
 _register(

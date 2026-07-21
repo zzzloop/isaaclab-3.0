@@ -19,7 +19,12 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-_GOAL_TOLERANCES_M = {"clutter_transfer": 0.075, "bimanual_reorient": 0.10, "precision_insert": 0.04}
+_GOAL_TOLERANCES_M = {
+    "clutter_transfer": 0.075,
+    "bimanual_reorient": 0.10,
+    "precision_insert": 0.04,
+    "random_cube_bucket": 0.06,
+}
 _GOALS = {
     task_slug: (*layout["goal"], _GOAL_TOLERANCES_M[task_slug]) for task_slug, layout in AMGG_G1_TASK_LAYOUTS.items()
 }
@@ -80,7 +85,12 @@ def g1_task_progress(env: ManagerBasedRLEnv, task_slug: str) -> torch.Tensor:
     position = _position_env(env)
     goal = g1_task_goal(env, task_slug)
     distance = torch.linalg.vector_norm(position - goal[:, :3], dim=1)
-    scale = {"clutter_transfer": 0.75, "bimanual_reorient": 0.55, "precision_insert": 0.75}[task_slug]
+    scale = {
+        "clutter_transfer": 0.75,
+        "bimanual_reorient": 0.55,
+        "precision_insert": 0.75,
+        "random_cube_bucket": 0.65,
+    }[task_slug]
     return (1.0 - distance / scale).clamp(0.0, 1.0).unsqueeze(1)
 
 
@@ -138,6 +148,23 @@ def precision_insert_success(
     long_axis_w = math_utils.quat_apply(obj.data.root_quat_w.torch, local_z)
     vertical = torch.abs(long_axis_w[:, 2]) > vertical_axis_cosine
     return xy_ok & z_ok & vertical & _settled(env, max_speed=max_speed)
+
+
+def random_cube_bucket_success(
+    env: ManagerBasedRLEnv,
+    x_tolerance: float = 0.060,
+    y_tolerance: float = 0.050,
+    minimum_z: float = 1.015,
+    maximum_z: float = 1.070,
+    max_speed: float = 0.15,
+) -> torch.Tensor:
+    """Check stable placement of the randomized cube inside the bucket."""
+    position = _position_env(env)
+    goal = position.new_tensor(_GOALS["random_cube_bucket"][:3])
+    x_ok = torch.abs(position[:, 0] - goal[0]) < x_tolerance
+    y_ok = torch.abs(position[:, 1] - goal[1]) < y_tolerance
+    z_ok = (position[:, 2] > minimum_z) & (position[:, 2] < maximum_z)
+    return x_ok & y_ok & z_ok & _settled(env, max_speed=max_speed)
 
 
 def g1_object_dropped(env: ManagerBasedRLEnv, minimum_height: float = 0.72) -> torch.Tensor:

@@ -40,6 +40,7 @@ from .amgg_g1_workspace import (
 _CLUTTER_LAYOUT = AMGG_G1_TASK_LAYOUTS["clutter_transfer"]
 _BIMANUAL_LAYOUT = AMGG_G1_TASK_LAYOUTS["bimanual_reorient"]
 _PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["precision_insert"]
+_BUCKET_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_cube_bucket"]
 
 
 def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> dict:
@@ -192,6 +193,32 @@ class AmggG1ClutterTransferSceneCfg(AmggG1BaseSceneCfg):
 
 
 @configclass
+class AmggG1RandomCubeBucketSceneCfg(AmggG1BaseSceneCfg):
+    """Randomized cube placement into a reachable four-wall bucket."""
+
+    object = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Object",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=_BUCKET_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["random_cube_bucket"]
+        ),
+        spawn=sim_utils.CuboidCfg(size=(0.055, 0.055, 0.055), **_dynamic_material((0.95, 0.28, 0.04))),
+    )
+    bucket_left = _static_box(
+        "{ENV_REGEX_NS}/BucketLeft", _BUCKET_LAYOUT["bucket_left"], (0.018, 0.120, 0.10), (0.08, 0.72, 0.22)
+    )
+    bucket_right = _static_box(
+        "{ENV_REGEX_NS}/BucketRight", _BUCKET_LAYOUT["bucket_right"], (0.018, 0.120, 0.10), (0.08, 0.72, 0.22)
+    )
+    bucket_near = _static_box(
+        "{ENV_REGEX_NS}/BucketNear", _BUCKET_LAYOUT["bucket_near"], (0.160, 0.018, 0.10), (0.08, 0.72, 0.22)
+    )
+    bucket_far = _static_box(
+        "{ENV_REGEX_NS}/BucketFar", _BUCKET_LAYOUT["bucket_far"], (0.160, 0.018, 0.10), (0.08, 0.72, 0.22)
+    )
+    goal = _goal_marker(_BUCKET_LAYOUT["goal_marker"], (0.105, 0.075, 0.006), (0.10, 0.85, 0.18))
+
+
+@configclass
 class AmggG1BimanualReorientSceneCfg(AmggG1BaseSceneCfg):
     """Long-object reorientation onto a two-support fixture."""
 
@@ -299,6 +326,12 @@ class ClutterPolicyCfg(AmggG1PolicyCfg):
 
 
 @configclass
+class RandomCubeBucketPolicyCfg(AmggG1PolicyCfg):
+    goal = ObsTerm(func=mdp.g1_task_goal, params={"task_slug": "random_cube_bucket"})
+    progress = ObsTerm(func=mdp.g1_task_progress, params={"task_slug": "random_cube_bucket"})
+
+
+@configclass
 class BimanualPolicyCfg(AmggG1PolicyCfg):
     goal = ObsTerm(func=mdp.g1_task_goal, params={"task_slug": "bimanual_reorient"})
     progress = ObsTerm(func=mdp.g1_task_progress, params={"task_slug": "bimanual_reorient"})
@@ -313,6 +346,11 @@ class PrecisionPolicyCfg(AmggG1PolicyCfg):
 @configclass
 class ClutterObservationsCfg:
     policy: ClutterPolicyCfg = ClutterPolicyCfg()
+
+
+@configclass
+class RandomCubeBucketObservationsCfg:
+    policy: RandomCubeBucketPolicyCfg = RandomCubeBucketPolicyCfg()
 
 
 @configclass
@@ -337,6 +375,21 @@ class AmggG1EventsCfg:
                 "y": (-AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M, AMGG_G1_OBJECT_RESET_Y_HALF_RANGE_M),
                 "yaw": (-0.25, 0.25),
             },
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+
+@configclass
+class RandomCubeBucketEventsCfg(AmggG1EventsCfg):
+    """Randomize the cube start pose over a wider reachable tabletop patch."""
+
+    reset_object = EventTerm(
+        func=base_mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": AMGG_G1_TASK_OBJECT_RESET_RANGES["random_cube_bucket"],
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
         },
@@ -387,6 +440,11 @@ class ClutterTerminationsCfg(AmggG1FailureTermsCfg):
 
 
 @configclass
+class RandomCubeBucketTerminationsCfg(AmggG1FailureTermsCfg):
+    success = DoneTerm(func=mdp.random_cube_bucket_success)
+
+
+@configclass
 class BimanualTerminationsCfg(AmggG1FailureTermsCfg):
     success = DoneTerm(func=mdp.bimanual_reorient_success)
 
@@ -424,6 +482,20 @@ class AmggG1ClutterTransferEnvCfg(AmggG1BaseEnvCfg):
     )
     observations: ClutterObservationsCfg = ClutterObservationsCfg()
     terminations: ClutterTerminationsCfg = ClutterTerminationsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.episode_length_s = 45.0
+
+
+@configclass
+class AmggG1RandomCubeBucketEnvCfg(AmggG1BaseEnvCfg):
+    scene: AmggG1RandomCubeBucketSceneCfg = AmggG1RandomCubeBucketSceneCfg(
+        num_envs=1, env_spacing=2.5, replicate_physics=True
+    )
+    observations: RandomCubeBucketObservationsCfg = RandomCubeBucketObservationsCfg()
+    events: RandomCubeBucketEventsCfg = RandomCubeBucketEventsCfg()
+    terminations: RandomCubeBucketTerminationsCfg = RandomCubeBucketTerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -474,6 +546,11 @@ class _AmggG1XrTimingMixin:
 @configclass
 class AmggG1ClutterTransferXrEnvCfg(_AmggG1XrTimingMixin, AmggG1ClutterTransferEnvCfg):
     """Low-latency XR variant of the clutter-transfer task."""
+
+
+@configclass
+class AmggG1RandomCubeBucketXrEnvCfg(_AmggG1XrTimingMixin, AmggG1RandomCubeBucketEnvCfg):
+    """Low-latency XR variant of the randomized cube-to-bucket task."""
 
 
 @configclass

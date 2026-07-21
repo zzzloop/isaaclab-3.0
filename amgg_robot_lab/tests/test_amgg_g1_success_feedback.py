@@ -51,6 +51,13 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
                 "z_tolerance": 0.055,
                 "max_speed": 0.15,
             },
+            "random_cube_bucket_success": {
+                "x_tolerance": 0.060,
+                "y_tolerance": 0.050,
+                "minimum_z": 1.015,
+                "maximum_z": 1.070,
+                "max_speed": 0.15,
+            },
             "bimanual_reorient_success": {
                 "xy_tolerance": 0.10,
                 "z_tolerance": 0.075,
@@ -77,6 +84,12 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
         self.assertIn("torch.abs(long_axis_w[:, 2]) > vertical_axis_cosine", self.terms_source)
         self.assertNotIn("world_z[:, 2] > level_cosine", self.terms_source)
         self.assertNotIn("] > upright_cosine", self.terms_source)
+
+    def test_random_cube_bucket_uses_container_bounds(self) -> None:
+        self.assertIn('_GOALS["random_cube_bucket"]', self.terms_source)
+        self.assertIn("x_ok = torch.abs(position[:, 0] - goal[0]) < x_tolerance", self.terms_source)
+        self.assertIn("y_ok = torch.abs(position[:, 1] - goal[1]) < y_tolerance", self.terms_source)
+        self.assertIn("(position[:, 2] > minimum_z) & (position[:, 2] < maximum_z)", self.terms_source)
 
     def test_plain_teleop_reports_termination_reason(self) -> None:
         teleop_source = (
@@ -116,7 +129,7 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
 
     def test_readme_documents_all_g1_recording_and_conversion_commands(self) -> None:
         readme = (self.repo_root / "amgg_robot_lab" / "README_CN.md").read_text(encoding="utf-8")
-        for task_name in ("ClutterTransfer", "BimanualReorient", "PrecisionInsert"):
+        for task_name in ("ClutterTransfer", "RandomCubeBucket", "BimanualReorient", "PrecisionInsert"):
             self.assertIn(f"Isaac-AMGG-G1-{task_name}-XR-v0", readme)
             self.assertIn(f"Isaac-AMGG-G1-{task_name}-v0", readme)
         self.assertIn("amgg_convert_g1_hdf5_to_lerobot.py", readme)
