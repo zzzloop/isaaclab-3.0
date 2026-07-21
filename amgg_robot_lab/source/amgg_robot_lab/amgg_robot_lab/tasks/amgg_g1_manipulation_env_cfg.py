@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import isaaclab.envs.mdp as base_mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
@@ -43,6 +45,9 @@ _BIMANUAL_LAYOUT = AMGG_G1_TASK_LAYOUTS["bimanual_reorient"]
 _PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["precision_insert"]
 _RANDOM_PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_precision_insert"]
 _BUCKET_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_cube_bucket"]
+_BUCKET_URDF_PATH = (
+    Path(__file__).resolve().parents[1] / "assets" / "data" / "objects" / "bucket" / "bucket.urdf"
+)
 
 
 def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> dict:
@@ -95,6 +100,23 @@ def _goal_marker(position: tuple[float, float, float], size: tuple[float, float,
         spawn=sim_utils.CuboidCfg(
             size=size,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color, opacity=0.42, roughness=0.8),
+        ),
+    )
+
+
+def _collision_box(
+    prim_path: str,
+    position: tuple[float, float, float],
+    size: tuple[float, float, float],
+) -> RigidObjectCfg:
+    return RigidObjectCfg(
+        prim_path=prim_path,
+        init_state=RigidObjectCfg.InitialStateCfg(pos=position),
+        spawn=sim_utils.CuboidCfg(
+            size=size,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.08, 0.72, 0.22), opacity=0.0),
         ),
     )
 
@@ -230,41 +252,50 @@ class AmggG1RandomClutterTransferSceneCfg(AmggG1BaseSceneCfg):
 
 @configclass
 class AmggG1RandomCubeBucketSceneCfg(AmggG1BaseSceneCfg):
-    """Randomized cube placement into a reachable four-wall bucket."""
+    """Randomized cube placement into a reachable bucket mesh with distractors."""
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=_BUCKET_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["random_cube_bucket"]
         ),
-        spawn=sim_utils.CuboidCfg(size=(0.055, 0.055, 0.055), **_dynamic_material((0.95, 0.28, 0.04))),
+        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.045), **_dynamic_material((0.95, 0.28, 0.04))),
     )
     distractor_a = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/BucketDistractorA",
         init_state=RigidObjectCfg.InitialStateCfg(pos=_BUCKET_LAYOUT["distractor_a"]),
-        spawn=sim_utils.CuboidCfg(size=(0.052, 0.052, 0.052), **_dynamic_material((0.08, 0.35, 0.92))),
+        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.045), **_dynamic_material((0.08, 0.35, 0.92))),
     )
     distractor_b = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/BucketDistractorB",
         init_state=RigidObjectCfg.InitialStateCfg(pos=_BUCKET_LAYOUT["distractor_b"]),
-        spawn=sim_utils.CuboidCfg(size=(0.052, 0.052, 0.052), **_dynamic_material((0.88, 0.78, 0.08))),
+        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.045), **_dynamic_material((0.88, 0.78, 0.08))),
     )
     distractor_c = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/BucketDistractorC",
         init_state=RigidObjectCfg.InitialStateCfg(pos=_BUCKET_LAYOUT["distractor_c"]),
-        spawn=sim_utils.CuboidCfg(size=(0.052, 0.052, 0.052), **_dynamic_material((0.58, 0.16, 0.86))),
+        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.045), **_dynamic_material((0.58, 0.16, 0.86))),
     )
-    bucket_left = _static_box(
-        "{ENV_REGEX_NS}/BucketLeft", _BUCKET_LAYOUT["bucket_left"], (0.018, 0.120, 0.10), (0.08, 0.72, 0.22)
+    bucket = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/Bucket",
+        init_state=AssetBaseCfg.InitialStateCfg(pos=_BUCKET_LAYOUT["bucket"]),
+        spawn=sim_utils.UrdfFileCfg(
+            asset_path=str(_BUCKET_URDF_PATH),
+            fix_base=True,
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+        ),
     )
-    bucket_right = _static_box(
-        "{ENV_REGEX_NS}/BucketRight", _BUCKET_LAYOUT["bucket_right"], (0.018, 0.120, 0.10), (0.08, 0.72, 0.22)
+    bucket_collision_left = _collision_box(
+        "{ENV_REGEX_NS}/BucketCollisionLeft", _BUCKET_LAYOUT["bucket_collision_left"], (0.018, 0.120, 0.10)
     )
-    bucket_near = _static_box(
-        "{ENV_REGEX_NS}/BucketNear", _BUCKET_LAYOUT["bucket_near"], (0.160, 0.018, 0.10), (0.08, 0.72, 0.22)
+    bucket_collision_right = _collision_box(
+        "{ENV_REGEX_NS}/BucketCollisionRight", _BUCKET_LAYOUT["bucket_collision_right"], (0.018, 0.120, 0.10)
     )
-    bucket_far = _static_box(
-        "{ENV_REGEX_NS}/BucketFar", _BUCKET_LAYOUT["bucket_far"], (0.160, 0.018, 0.10), (0.08, 0.72, 0.22)
+    bucket_collision_near = _collision_box(
+        "{ENV_REGEX_NS}/BucketCollisionNear", _BUCKET_LAYOUT["bucket_collision_near"], (0.160, 0.018, 0.10)
+    )
+    bucket_collision_far = _collision_box(
+        "{ENV_REGEX_NS}/BucketCollisionFar", _BUCKET_LAYOUT["bucket_collision_far"], (0.160, 0.018, 0.10)
     )
     goal = _goal_marker(_BUCKET_LAYOUT["goal_marker"], (0.105, 0.075, 0.006), (0.10, 0.85, 0.18))
 

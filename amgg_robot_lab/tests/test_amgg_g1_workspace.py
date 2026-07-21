@@ -101,7 +101,7 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertGreaterEqual(layouts["bimanual_reorient"]["right_support"][1], 0.38)
         self.assertGreaterEqual(layouts["precision_insert"]["goal"][1], 0.36)
         self.assertGreaterEqual(layouts["random_precision_insert"]["goal"][1], 0.36)
-        self.assertLessEqual(layouts["random_cube_bucket"]["bucket_far"][1], 0.407)
+        self.assertLessEqual(layouts["random_cube_bucket"]["bucket_collision_far"][1], 0.407)
 
     def test_bimanual_action_widens_both_wrists_only_for_task_two(self) -> None:
         offset = self.workspace["AMGG_G1_BIMANUAL_WRIST_X_OFFSET_M"]
@@ -145,13 +145,33 @@ class TestAmggG1Workspace(unittest.TestCase):
         layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["random_cube_bucket"]
         reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]["random_cube_bucket"]
 
-        self.assertLessEqual(layout["bucket_far"][1], 0.407)
+        self.assertLessEqual(layout["bucket_collision_far"][1], 0.407)
         self.assertGreaterEqual(reset_ranges["x"][1] - reset_ranges["x"][0], 0.16)
         self.assertGreaterEqual(reset_ranges["y"][1] - reset_ranges["y"][0], 0.08)
         self.assertGreater(layout["goal"][0], layout["object"][0])
         self.assertGreater(layout["goal"][1], layout["object"][1])
         for name in ("distractor_a", "distractor_b", "distractor_c"):
             self.assertIn(name, layout)
+        self.assertIn("bucket", layout)
+        self.assertIn("bucket_collision_left", layout)
+        self.assertIn("bucket_collision_right", layout)
+        self.assertIn("bucket_collision_near", layout)
+        self.assertIn("bucket_collision_far", layout)
+
+    def test_random_cube_bucket_uses_bucket_asset(self) -> None:
+        bucket_dir = (
+            self.project_root
+            / "source"
+            / "amgg_robot_lab"
+            / "amgg_robot_lab"
+            / "assets"
+            / "data"
+            / "objects"
+            / "bucket"
+        )
+        self.assertTrue((bucket_dir / "bucket.urdf").is_file())
+        self.assertTrue((bucket_dir / "meshes" / "bucket.obj").is_file())
+        self.assertTrue((bucket_dir / "meshes" / "bucket.mtl").is_file())
 
     def test_randomized_variants_have_wider_reachable_resets(self) -> None:
         reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]
