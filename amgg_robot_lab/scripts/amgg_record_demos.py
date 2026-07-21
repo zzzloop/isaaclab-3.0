@@ -12,6 +12,10 @@ from pathlib import Path
 from amgg_gpu import configure_preferred_gpu
 
 _AMGG_REGISTRATION_CALLBACK = "amgg_robot_lab.tasks.register_tasks"
+_AMGG_RECORDING_KIT_ARGS = (
+    "--/renderer/multiGpu/maxGpuCount=1",
+    "--/renderer/multiGpu/enabled=false",
+)
 
 
 def _inject_recording_defaults() -> None:
@@ -22,6 +26,26 @@ def _inject_recording_defaults() -> None:
     )
     if not has_option:
         sys.argv.append("--auto_start_recording")
+
+
+def _merge_kit_args(extra_args: tuple[str, ...]) -> None:
+    """Append AMGG Kit settings while preserving caller-provided settings."""
+    for index, argument in enumerate(sys.argv[1:], start=1):
+        if argument == "--kit_args":
+            if index + 1 >= len(sys.argv):
+                raise SystemExit("--kit_args requires a value.")
+            current_args = sys.argv[index + 1].split()
+            merged_args = current_args + [arg for arg in extra_args if arg not in current_args]
+            sys.argv[index + 1] = " ".join(merged_args)
+            return
+        if argument.startswith("--kit_args="):
+            current_value = argument.split("=", maxsplit=1)[1]
+            current_args = current_value.split()
+            merged_args = current_args + [arg for arg in extra_args if arg not in current_args]
+            sys.argv[index] = f"--kit_args={' '.join(merged_args)}"
+            return
+
+    sys.argv.extend(["--kit_args", " ".join(extra_args)])
 
 
 def _inject_registration_callback() -> None:
@@ -37,6 +61,7 @@ def _inject_registration_callback() -> None:
 def main() -> None:
     """Run the official success-gated HDF5 recording entry point."""
     configure_preferred_gpu()
+    _merge_kit_args(_AMGG_RECORDING_KIT_ARGS)
     _inject_recording_defaults()
     _inject_registration_callback()
     script = Path(__file__).resolve().parents[2] / "scripts" / "tools" / "record_demos.py"

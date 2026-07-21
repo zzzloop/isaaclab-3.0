@@ -80,6 +80,11 @@ def configure_preferred_gpu(
     different ordinals to the same device. Passing ``--device`` opts out so an
     explicit operator choice and environment are preserved.
 
+    When the preferred physical GPU is not present in the queried inventory,
+    the function falls back to the first available allowed GPU, or the lowest
+    available physical GPU, with a warning instead of aborting. This keeps
+    single-GPU and repurposed machines runnable without extra configuration.
+
     Args:
         arguments: Process argument vector to update. Defaults to :attr:`sys.argv`.
         environment: Process environment to update. Defaults to :attr:`os.environ`.
@@ -106,14 +111,27 @@ def configure_preferred_gpu(
     try:
         detected = list(inventory) if inventory is not None else _query_gpu_inventory()
         by_physical_index = {gpu.physical_index: gpu for gpu in detected}
-        missing_indices = [index for index in allowed_indices if index not in by_physical_index]
-        if missing_indices:
-            available = sorted(by_physical_index)
-            raise SystemExit(
-                f"AMGG allowed physical GPUs {missing_indices} were not found; available GPUs: {available}."
-            )
         ordered_gpus = sorted(detected, key=lambda gpu: gpu.pci_sort_key)
-        logical_index = next(index for index, gpu in enumerate(ordered_gpus) if gpu.physical_index == preferred_index)
+        # Prefer the configured physical GPU; fall back to the first allowed
+        # physical GPU that is actually present, then to the lowest available
+        # physical GPU. This keeps single-GPU and repurposed machines runnable
+        # without requiring operators to edit AMGG_PREFERRED_GPU/AMGG_ALLOWED_GPUS.
+        candidate_indices = [preferred_index] + [index for index in allowed_indices if index != preferred_index]
+        selected_physical = next((index for index in candidate_indices if index in by_physical_index), None)
+        if selected_physical is None:
+            selected_physical = ordered_gpus[0].physical_index
+            print(
+                f"[AMGG] Warning: none of allowed physical GPUs {allowed_indices} were found;"
+                f" falling back to physical GPU {selected_physical}.",
+                flush=True,
+            )
+        elif selected_physical != preferred_index:
+            print(
+                f"[AMGG] Warning: preferred physical GPU {preferred_index} is not available;"
+                f" falling back to physical GPU {selected_physical}.",
+                flush=True,
+            )
+        logical_index = next(index for index, gpu in enumerate(ordered_gpus) if gpu.physical_index == selected_physical)
         selected = ordered_gpus[logical_index]
         identity = f"UUID={selected.uuid}, PCI={selected.pci_bus_id}"
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
