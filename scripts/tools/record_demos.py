@@ -319,9 +319,9 @@ def create_environment_config(
             env_cfg.sim.render.antialiasing_mode = "DLSS"
         else:
             # XR recording with policy cameras is sensitive to extra RTX/DLSS work on multi-GPU systems.
-            # Keep the sensor frames deterministic and lightweight; the AMGG wrapper also launches Kit
-            # with the same synchronous rendering settings used by Isaac Lab's camera experience files.
-            env_cfg.sim.render.antialiasing_mode = "Off"
+            # FXAA keeps the view and recorded RGB frames cleaner than disabling anti-aliasing while avoiding
+            # the heavier DLSS path that can trigger RTX/CUDA interop failures during XR camera startup.
+            env_cfg.sim.render.antialiasing_mode = "FXAA"
             if hasattr(env_cfg, "num_rerenders_on_reset"):
                 num_rerenders_on_reset = env_cfg.num_rerenders_on_reset
                 if num_rerenders_on_reset is not None:
