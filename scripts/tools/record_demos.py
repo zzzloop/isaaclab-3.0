@@ -749,6 +749,10 @@ if __name__ == "__main__":
     # run the main function
     main()
     # env.close() already closes the USD stage via sim.clear_instance().
-    # Pump the event loop so the viewport processes closure, then close the app.
-    simulation_app.update()
+    # Pump one final non-XR event only for standard GUI runs. In XR runs, the
+    # IsaacTeleop context may have already stopped the CloudXR runtime; polling
+    # OpenXR once more can produce a misleading XR_ERROR_INSTANCE_LOST even
+    # after the HDF5 episode was exported successfully.
+    if not args_cli.xr:
+        simulation_app.update()
     simulation_app.close()
