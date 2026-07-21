@@ -150,6 +150,39 @@ class TestAmggGpu(unittest.TestCase):
         finally:
             sys.argv = original_argv
 
+    def test_recorder_defaults_to_continuous_collection(self) -> None:
+        original_argv = sys.argv[:]
+        try:
+            sys.argv = ["amgg_record_demos.py", "--xr"]
+
+            amgg_record_demos._inject_continuous_demo_default()
+
+            self.assertEqual(sys.argv[-2:], ["--num_demos", "0"])
+        finally:
+            sys.argv = original_argv
+
+    def test_recorder_treats_single_demo_as_continuous_collection(self) -> None:
+        original_argv = sys.argv[:]
+        try:
+            sys.argv = ["amgg_record_demos.py", "--xr", "--num_demos", "1"]
+
+            amgg_record_demos._inject_continuous_demo_default()
+
+            self.assertEqual(sys.argv[-2:], ["--num_demos", "0"])
+        finally:
+            sys.argv = original_argv
+
+    def test_recorder_preserves_finite_multi_demo_count(self) -> None:
+        original_argv = sys.argv[:]
+        try:
+            sys.argv = ["amgg_record_demos.py", "--xr", "--num_demos=3"]
+
+            amgg_record_demos._inject_continuous_demo_default()
+
+            self.assertEqual(sys.argv[-1], "--num_demos=3")
+        finally:
+            sys.argv = original_argv
+
 
 if __name__ == "__main__":
     unittest.main()
