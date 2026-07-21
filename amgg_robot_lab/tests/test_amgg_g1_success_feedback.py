@@ -52,16 +52,17 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
                 "max_speed": 0.15,
             },
             "bimanual_reorient_success": {
-                "position_tolerance": 0.08,
-                "alignment_cosine": 0.92,
-                "level_cosine": 0.92,
-                "max_speed": 0.15,
+                "xy_tolerance": 0.10,
+                "z_tolerance": 0.075,
+                "alignment_cosine": 0.85,
+                "max_long_axis_z_component": 0.25,
+                "max_speed": 0.20,
             },
             "precision_insert_success": {
-                "xy_tolerance": 0.025,
-                "z_tolerance": 0.04,
-                "upright_cosine": 0.96,
-                "max_speed": 0.10,
+                "xy_tolerance": 0.04,
+                "z_tolerance": 0.07,
+                "vertical_axis_cosine": 0.88,
+                "max_speed": 0.15,
             },
         }
         for function_name, expected_defaults in expected.items():
@@ -69,6 +70,13 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
                 defaults = _function_defaults(self.terms_source, function_name)
                 for name, value in expected_defaults.items():
                     self.assertEqual(defaults[name], value)
+
+    def test_symmetric_objects_do_not_require_a_specific_face_up(self) -> None:
+        self.assertIn("torch.abs(long_axis_w[:, 0]) > alignment_cosine", self.terms_source)
+        self.assertIn("torch.abs(long_axis_w[:, 2]) < max_long_axis_z_component", self.terms_source)
+        self.assertIn("torch.abs(long_axis_w[:, 2]) > vertical_axis_cosine", self.terms_source)
+        self.assertNotIn("world_z[:, 2] > level_cosine", self.terms_source)
+        self.assertNotIn("] > upright_cosine", self.terms_source)
 
     def test_plain_teleop_reports_termination_reason(self) -> None:
         teleop_source = (

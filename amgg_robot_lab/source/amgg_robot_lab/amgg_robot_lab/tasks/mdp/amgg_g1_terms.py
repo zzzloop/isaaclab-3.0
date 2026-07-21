@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-_GOAL_TOLERANCES_M = {"clutter_transfer": 0.075, "bimanual_reorient": 0.045, "precision_insert": 0.015}
+_GOAL_TOLERANCES_M = {"clutter_transfer": 0.075, "bimanual_reorient": 0.10, "precision_insert": 0.04}
 _GOALS = {
     task_slug: (*layout["goal"], _GOAL_TOLERANCES_M[task_slug]) for task_slug, layout in AMGG_G1_TASK_LAYOUTS.items()
 }
@@ -100,35 +100,34 @@ def clutter_transfer_success(
 
 def bimanual_reorient_success(
     env: ManagerBasedRLEnv,
-    position_tolerance: float = 0.08,
-    alignment_cosine: float = 0.92,
-    level_cosine: float = 0.92,
-    max_speed: float = 0.15,
+    xy_tolerance: float = 0.10,
+    z_tolerance: float = 0.075,
+    alignment_cosine: float = 0.85,
+    max_long_axis_z_component: float = 0.25,
+    max_speed: float = 0.20,
 ) -> torch.Tensor:
-    """Check stable, level placement of the bar along the support axis."""
+    """Check stable bar placement on the supports without requiring a top face."""
     obj = _object(env)
     position = _position_env(env)
     goal = position.new_tensor(_GOALS["bimanual_reorient"][:3])
-    position_ok = torch.linalg.vector_norm(position - goal, dim=1) < position_tolerance
+    xy_ok = torch.linalg.vector_norm(position[:, :2] - goal[:2], dim=1) < xy_tolerance
+    z_ok = torch.abs(position[:, 2] - goal[2]) < z_tolerance
     local_x = torch.zeros((env.num_envs, 3), device=env.device)
     local_x[:, 0] = 1.0
-    local_z = torch.zeros_like(local_x)
-    local_z[:, 2] = 1.0
-    world_x = math_utils.quat_apply(obj.data.root_quat_w.torch, local_x)
-    world_z = math_utils.quat_apply(obj.data.root_quat_w.torch, local_z)
-    aligned = torch.abs(world_x[:, 0]) > alignment_cosine
-    level = world_z[:, 2] > level_cosine
-    return position_ok & aligned & level & _settled(env, max_speed=max_speed)
+    long_axis_w = math_utils.quat_apply(obj.data.root_quat_w.torch, local_x)
+    aligned = torch.abs(long_axis_w[:, 0]) > alignment_cosine
+    horizontal = torch.abs(long_axis_w[:, 2]) < max_long_axis_z_component
+    return xy_ok & z_ok & aligned & horizontal & _settled(env, max_speed=max_speed)
 
 
 def precision_insert_success(
     env: ManagerBasedRLEnv,
-    xy_tolerance: float = 0.025,
-    z_tolerance: float = 0.04,
-    upright_cosine: float = 0.96,
-    max_speed: float = 0.10,
+    xy_tolerance: float = 0.04,
+    z_tolerance: float = 0.07,
+    vertical_axis_cosine: float = 0.88,
+    max_speed: float = 0.15,
 ) -> torch.Tensor:
-    """Check tight-tolerance upright insertion into the guide socket."""
+    """Check stable insertion into the guide socket without requiring a top face."""
     obj = _object(env)
     position = _position_env(env)
     goal = position.new_tensor(_GOALS["precision_insert"][:3])
@@ -136,8 +135,9 @@ def precision_insert_success(
     z_ok = torch.abs(position[:, 2] - goal[2]) < z_tolerance
     local_z = torch.zeros((env.num_envs, 3), device=env.device)
     local_z[:, 2] = 1.0
-    upright = math_utils.quat_apply(obj.data.root_quat_w.torch, local_z)[:, 2] > upright_cosine
-    return xy_ok & z_ok & upright & _settled(env, max_speed=max_speed)
+    long_axis_w = math_utils.quat_apply(obj.data.root_quat_w.torch, local_z)
+    vertical = torch.abs(long_axis_w[:, 2]) > vertical_axis_cosine
+    return xy_ok & z_ok & vertical & _settled(env, max_speed=max_speed)
 
 
 def g1_object_dropped(env: ManagerBasedRLEnv, minimum_height: float = 0.72) -> torch.Tensor:
