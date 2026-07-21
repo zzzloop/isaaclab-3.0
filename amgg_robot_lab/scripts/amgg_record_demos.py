@@ -16,8 +16,11 @@ _AMGG_RECORDING_KIT_ARGS = (
     "--/renderer/multiGpu/enabled=false",
     "--/renderer/multiGpu/autoEnable=false",
     "--/renderer/multiGpu/maxGpuCount=1",
-    "--/rtx/rendermode=Minimal",
-    "--/rtx/minimal/mode=3",
+    "--/app/updateOrder/checkForHydraRenderComplete=1000",
+    "--/app/renderer/waitIdle=true",
+    "--/app/hydraEngine/waitIdle=true",
+    "--/app/asyncRendering=false",
+    "--/app/asyncRenderingLowLatency=false",
     "--/omni/replicator/asyncRendering=false",
 )
 

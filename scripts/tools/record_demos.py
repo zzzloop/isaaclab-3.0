@@ -531,6 +531,21 @@ def handle_reset(
     return success_step_count
 
 
+def apply_xr_recording_view_settings() -> None:
+    """Switch the live XR viewport to a stable low-noise render mode after XR starts."""
+    if not (args_cli.xr and args_cli.enable_cameras):
+        return
+    try:
+        import carb
+
+        settings = carb.settings.get_settings()
+        settings.set_string("/rtx/rendermode", "Minimal")
+        settings.set_int("/rtx/minimal/mode", 3)
+        print("Applied XR recording view settings: RTX Minimal, full-material shading.")
+    except Exception as error:
+        logger.warning(f"Unable to apply XR recording view settings: {error}")
+
+
 def run_simulation_loop(
     env: gym.Env,
     teleop_interface: object | None,
@@ -595,11 +610,13 @@ def run_simulation_loop(
 
     label_text = f"Recorded {current_recorded_demo_count} successful demonstrations."
     instruction_display = setup_ui(label_text, env)
+    xr_recording_view_settings_applied = False
 
     def inner_loop():
         """Inner loop function with access to nonlocal variables."""
         nonlocal current_recorded_demo_count, success_step_count, should_reset_recording_instance
         nonlocal running_recording_instance, remote_recording_started, label_text
+        nonlocal xr_recording_view_settings_applied
 
         # Reset before starting
         env.sim.reset()
@@ -632,6 +649,9 @@ def run_simulation_loop(
                 if action is None:
                     env.sim.render()
                     continue
+                if not xr_recording_view_settings_applied:
+                    apply_xr_recording_view_settings()
+                    xr_recording_view_settings_applied = True
                 # Expand to batch dimension
                 actions = action.repeat(env.num_envs, 1)
 

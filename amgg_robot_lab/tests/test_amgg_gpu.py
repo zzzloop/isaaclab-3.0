@@ -126,8 +126,11 @@ class TestAmggGpu(unittest.TestCase):
             self.assertIn("--/renderer/multiGpu/enabled=false", sys.argv[3])
             self.assertIn("--/renderer/multiGpu/autoEnable=false", sys.argv[3])
             self.assertIn("--/renderer/multiGpu/maxGpuCount=1", sys.argv[3])
-            self.assertIn("--/rtx/rendermode=Minimal", sys.argv[3])
-            self.assertIn("--/rtx/minimal/mode=3", sys.argv[3])
+            self.assertIn("--/app/updateOrder/checkForHydraRenderComplete=1000", sys.argv[3])
+            self.assertIn("--/app/renderer/waitIdle=true", sys.argv[3])
+            self.assertIn("--/app/hydraEngine/waitIdle=true", sys.argv[3])
+            self.assertIn("--/app/asyncRendering=false", sys.argv[3])
+            self.assertIn("--/app/asyncRenderingLowLatency=false", sys.argv[3])
             self.assertIn("--/omni/replicator/asyncRendering=false", sys.argv[3])
         finally:
             sys.argv = original_argv
