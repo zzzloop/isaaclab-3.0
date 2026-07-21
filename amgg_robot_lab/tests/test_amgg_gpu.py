@@ -28,22 +28,23 @@ amgg_gpu = _load_gpu_module()
 class TestAmggGpu(unittest.TestCase):
     """Validate stable GPU mapping before Isaac Sim starts."""
 
-    def test_preferred_physical_gpu_is_mapped_by_pci_order(self) -> None:
+    def test_preferred_physical_gpu_is_mapped_without_hiding_devices(self) -> None:
         inventory = [
             amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:B1:00.0"),
             amgg_gpu._GpuInfo(1, "GPU-one", "00000000:31:00.0"),
             amgg_gpu._GpuInfo(2, "GPU-two", "00000000:4B:00.0"),
+            amgg_gpu._GpuInfo(3, "GPU-three", "00000000:21:00.0"),
         ]
         arguments = ["amgg_teleop.py", "--xr"]
-        environment = {}
+        environment = {"CUDA_VISIBLE_DEVICES": "0,1,2"}
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
-        self.assertEqual(logical_index, 1)
-        self.assertEqual(environment["CUDA_VISIBLE_DEVICES"], "GPU-one,GPU-two,GPU-zero")
+        self.assertEqual(logical_index, 2)
+        self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
         self.assertEqual(environment["CUDA_DEVICE_ORDER"], "PCI_BUS_ID")
-        self.assertEqual(environment["NV_GPU_INDEX"], "1")
-        self.assertEqual(arguments[-2:], ["--device", "cuda:1"])
+        self.assertEqual(environment["NV_GPU_INDEX"], "2")
+        self.assertEqual(arguments[-2:], ["--device", "cuda:2"])
 
     def test_explicit_device_preserves_environment(self) -> None:
         arguments = ["amgg_teleop.py", "--device", "cuda:1"]

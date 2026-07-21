@@ -75,8 +75,10 @@ def configure_preferred_gpu(
 ) -> int | None:
     """Map the preferred physical GPU to matching CUDA, Kit, and CloudXR indices.
 
-    The AMGG defaults use physical GPU 2 and expose physical GPUs 0, 1, and 2.
-    Passing ``--device`` opts out so an explicit operator choice is preserved.
+    The AMGG defaults use physical GPU 2. All GPUs remain visible because
+    restricting ``CUDA_VISIBLE_DEVICES`` can make CUDA and Kit/Vulkan assign
+    different ordinals to the same device. Passing ``--device`` opts out so an
+    explicit operator choice and environment are preserved.
 
     Args:
         arguments: Process argument vector to update. Defaults to :attr:`sys.argv`.
@@ -110,23 +112,28 @@ def configure_preferred_gpu(
             raise SystemExit(
                 f"AMGG allowed physical GPUs {missing_indices} were not found; available GPUs: {available}."
             )
-        visible_gpus = sorted((by_physical_index[index] for index in allowed_indices), key=lambda gpu: gpu.pci_sort_key)
-        logical_index = next(index for index, gpu in enumerate(visible_gpus) if gpu.physical_index == preferred_index)
-        environment["CUDA_VISIBLE_DEVICES"] = ",".join(gpu.uuid for gpu in visible_gpus)
-        selected = visible_gpus[logical_index]
+        ordered_gpus = sorted(detected, key=lambda gpu: gpu.pci_sort_key)
+        logical_index = next(index for index, gpu in enumerate(ordered_gpus) if gpu.physical_index == preferred_index)
+        selected = ordered_gpus[logical_index]
         identity = f"UUID={selected.uuid}, PCI={selected.pci_bus_id}"
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
-        logical_index = allowed_indices.index(preferred_index)
-        environment["CUDA_VISIBLE_DEVICES"] = ",".join(str(index) for index in allowed_indices)
+        logical_index = preferred_index
         identity = "UUID/PCI unavailable"
         print(f"[AMGG] Warning: GPU identity probe failed ({error}); using ordinal fallback.", flush=True)
 
+    removed_visible_devices = environment.pop("CUDA_VISIBLE_DEVICES", None)
     environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     environment["NV_GPU_INDEX"] = str(logical_index)
     arguments.extend(["--device", f"cuda:{logical_index}"])
+    visibility_note = ""
+    if removed_visible_devices is not None:
+        visibility_note = (
+            f" Cleared CUDA_VISIBLE_DEVICES={removed_visible_devices!r} to keep CUDA/Kit ordinals aligned."
+        )
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
-        f"cuda:{logical_index}, Kit/CloudXR GPU {logical_index}; allowed physical GPUs={allowed_indices}.",
+        f"cuda:{logical_index}, Kit/CloudXR GPU {logical_index}; allowed physical GPUs={allowed_indices}."
+        f"{visibility_note}",
         flush=True,
     )
     return logical_index
