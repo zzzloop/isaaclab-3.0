@@ -13,8 +13,15 @@ from amgg_gpu import configure_preferred_gpu
 
 _AMGG_REGISTRATION_CALLBACK = "amgg_robot_lab.tasks.register_tasks"
 _AMGG_RECORDING_KIT_ARGS = (
-    "--/renderer/multiGpu/maxGpuCount=1",
     "--/renderer/multiGpu/enabled=false",
+    "--/renderer/multiGpu/autoEnable=false",
+    "--/renderer/multiGpu/maxGpuCount=1",
+    "--/app/updateOrder/checkForHydraRenderComplete=1000",
+    "--/app/renderer/waitIdle=true",
+    "--/app/hydraEngine/waitIdle=true",
+    "--/app/asyncRendering=false",
+    "--/app/asyncRenderingLowLatency=false",
+    "--/omni/replicator/asyncRendering=false",
 )
 
 
@@ -62,6 +69,7 @@ def main() -> None:
     """Run the official success-gated HDF5 recording entry point."""
     configure_preferred_gpu()
     _merge_kit_args(_AMGG_RECORDING_KIT_ARGS)
+    print(f"[AMGG] XR recording Kit args: {' '.join(_AMGG_RECORDING_KIT_ARGS)}", flush=True)
     _inject_recording_defaults()
     _inject_registration_callback()
     script = Path(__file__).resolve().parents[2] / "scripts" / "tools" / "record_demos.py"

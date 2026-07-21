@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Select a stable physical GPU before Isaac Sim or PyTorch starts."""
+"""Expose a single stable physical GPU before Isaac Sim or PyTorch starts."""
 
 from __future__ import annotations
 
@@ -73,12 +73,12 @@ def configure_preferred_gpu(
     environment: MutableMapping[str, str] | None = None,
     inventory: Sequence[_GpuInfo] | None = None,
 ) -> int | None:
-    """Map the preferred physical GPU to matching CUDA, Kit, and CloudXR indices.
+    """Expose the preferred physical GPU as the only CUDA, Kit, and CloudXR device.
 
-    The AMGG defaults use physical GPU 2. All GPUs remain visible because
-    restricting ``CUDA_VISIBLE_DEVICES`` can make CUDA and Kit/Vulkan assign
-    different ordinals to the same device. Passing ``--device`` opts out so an
-    explicit operator choice and environment are preserved.
+    The AMGG defaults use physical GPU 2. The selected physical GPU is written
+    to ``CUDA_VISIBLE_DEVICES`` before Isaac Sim, Kit, or PyTorch starts so the
+    process behaves as if the workstation had only that GPU. Passing ``--device``
+    opts out so an explicit operator choice and environment are preserved.
 
     When the preferred physical GPU is not present in the queried inventory,
     the function falls back to the first available allowed GPU, or the lowest
@@ -91,7 +91,7 @@ def configure_preferred_gpu(
         inventory: Optional GPU inventory for deterministic testing.
 
     Returns:
-        The selected logical GPU index, or ``None`` when ``--device`` was
+        The selected visible GPU index, or ``None`` when ``--device`` was
         explicitly provided.
     """
     arguments = sys.argv if arguments is None else arguments
@@ -131,27 +131,29 @@ def configure_preferred_gpu(
                 f" falling back to physical GPU {selected_physical}.",
                 flush=True,
             )
-        logical_index = next(index for index, gpu in enumerate(ordered_gpus) if gpu.physical_index == selected_physical)
-        selected = ordered_gpus[logical_index]
+        selected = by_physical_index[selected_physical]
         identity = f"UUID={selected.uuid}, PCI={selected.pci_bus_id}"
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
-        logical_index = preferred_index
+        selected_physical = preferred_index
         identity = "UUID/PCI unavailable"
         print(f"[AMGG] Warning: GPU identity probe failed ({error}); using ordinal fallback.", flush=True)
 
-    removed_visible_devices = environment.pop("CUDA_VISIBLE_DEVICES", None)
+    visible_gpu_index = 0
+    previous_visible_devices = environment.get("CUDA_VISIBLE_DEVICES")
+    environment["CUDA_VISIBLE_DEVICES"] = str(selected_physical)
     environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    environment["NV_GPU_INDEX"] = str(logical_index)
-    arguments.extend(["--device", f"cuda:{logical_index}"])
+    environment["NV_GPU_INDEX"] = str(visible_gpu_index)
+    arguments.extend(["--device", f"cuda:{visible_gpu_index}"])
     visibility_note = ""
-    if removed_visible_devices is not None:
+    if previous_visible_devices is not None and previous_visible_devices != str(selected_physical):
         visibility_note = (
-            f" Cleared CUDA_VISIBLE_DEVICES={removed_visible_devices!r} to keep CUDA/Kit ordinals aligned."
+            f" Replaced CUDA_VISIBLE_DEVICES={previous_visible_devices!r} with {selected_physical!r}."
         )
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
-        f"cuda:{logical_index}, Kit/CloudXR GPU {logical_index}; allowed physical GPUs={allowed_indices}."
+        f"only visible GPU cuda:{visible_gpu_index}, Kit/CloudXR GPU {visible_gpu_index};"
+        f" CUDA_VISIBLE_DEVICES={selected_physical}; allowed physical GPUs={allowed_indices}."
         f"{visibility_note}",
         flush=True,
     )
-    return logical_index
+    return visible_gpu_index

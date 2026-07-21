@@ -316,7 +316,16 @@ def create_environment_config(
         # If cameras are not enabled and XR is enabled, remove camera configs
         if not args_cli.enable_cameras:
             env_cfg = remove_camera_configs(env_cfg)
-        env_cfg.sim.render.antialiasing_mode = "DLSS"
+            env_cfg.sim.render.antialiasing_mode = "DLSS"
+        else:
+            # XR recording with policy cameras is sensitive to extra RTX/DLSS work on multi-GPU systems.
+            # Keep the sensor frames deterministic and lightweight; the AMGG wrapper also launches Kit
+            # with the same synchronous rendering settings used by Isaac Lab's camera experience files.
+            env_cfg.sim.render.antialiasing_mode = "Off"
+            if hasattr(env_cfg, "num_rerenders_on_reset"):
+                num_rerenders_on_reset = env_cfg.num_rerenders_on_reset
+                if num_rerenders_on_reset is not None:
+                    env_cfg.num_rerenders_on_reset = min(int(num_rerenders_on_reset), 1)
 
     # modify configuration such that the environment runs indefinitely until
     # the goal is reached or other termination conditions are met
