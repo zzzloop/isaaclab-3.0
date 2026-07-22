@@ -57,7 +57,7 @@ class TestAmggGpu(unittest.TestCase):
         self.assertEqual(logical_index, 1)
         self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
         self.assertEqual(environment["CUDA_DEVICE_ORDER"], "PCI_BUS_ID")
-        self.assertNotIn("NV_GPU_INDEX", environment)
+        self.assertEqual(environment["NV_GPU_INDEX"], "0")
         self.assertEqual(arguments[-2:], ["--device", "cuda:1"])
 
     def test_explicit_device_preserves_environment(self) -> None:
@@ -82,7 +82,7 @@ class TestAmggGpu(unittest.TestCase):
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
         self.assertEqual(logical_index, 1)
-        self.assertNotIn("NV_GPU_INDEX", environment)
+        self.assertEqual(environment["NV_GPU_INDEX"], "0")
         self.assertEqual(arguments[-1], "cuda:1")
 
     def test_default_gpu_one_falls_back_only_to_allowed_safe_gpus(self) -> None:
@@ -96,7 +96,7 @@ class TestAmggGpu(unittest.TestCase):
 
         self.assertEqual(logical_index, 0)
         self.assertEqual(arguments[-1], "cuda:0")
-        self.assertNotIn("NV_GPU_INDEX", environment)
+        self.assertEqual(environment["NV_GPU_INDEX"], "0")
 
     def test_gpu_three_is_blocked_even_when_requested(self) -> None:
         inventory = [
@@ -127,7 +127,7 @@ class TestAmggGpu(unittest.TestCase):
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
         self.assertEqual(logical_index, 0)
-        self.assertNotIn("NV_GPU_INDEX", environment)
+        self.assertEqual(environment["NV_GPU_INDEX"], "0")
 
     def test_optional_kit_gpu_override_sets_nv_gpu_index(self) -> None:
         inventory = [
