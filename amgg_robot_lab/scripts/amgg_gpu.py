@@ -75,16 +75,16 @@ def configure_preferred_gpu(
 ) -> int | None:
     """Map the preferred physical GPU to matching CUDA, Kit, and CloudXR indices.
 
-    The AMGG defaults use physical GPU 2. All GPUs remain visible because
+    The AMGG defaults use physical GPU 1. All GPUs remain visible because
     Isaac Sim RTX/Vulkan device discovery can fail when ``CUDA_VISIBLE_DEVICES``
     hides GPUs from CUDA while Omniverse still enumerates them for graphics.
     Passing ``--device`` opts out so an explicit operator choice and environment
     are preserved.
 
     When the preferred physical GPU is not present in the queried inventory,
-    the function falls back to the first available allowed GPU, or the lowest
-    available physical GPU, with a warning instead of aborting. This keeps
-    single-GPU and repurposed machines runnable without extra configuration.
+    the function falls back only to another explicitly allowed GPU.  If no
+    allowed GPU is present, it aborts instead of silently selecting a hot or
+    unavailable device.
 
     Args:
         arguments: Process argument vector to update. Defaults to :attr:`sys.argv`.
@@ -102,8 +102,8 @@ def configure_preferred_gpu(
         return None
 
     try:
-        preferred_index = int(environment.get("AMGG_PREFERRED_GPU", "2"))
-        allowed_indices = _parse_physical_indices(environment.get("AMGG_ALLOWED_GPUS", "0,1,2"))
+        preferred_index = int(environment.get("AMGG_PREFERRED_GPU", "1"))
+        allowed_indices = _parse_physical_indices(environment.get("AMGG_ALLOWED_GPUS", "1"))
     except ValueError as error:
         raise SystemExit(f"Invalid AMGG GPU configuration: {error}") from error
     if preferred_index not in allowed_indices:
@@ -114,17 +114,16 @@ def configure_preferred_gpu(
         by_physical_index = {gpu.physical_index: gpu for gpu in detected}
         ordered_gpus = sorted(detected, key=lambda gpu: gpu.pci_sort_key)
         # Prefer the configured physical GPU; fall back to the first allowed
-        # physical GPU that is actually present, then to the lowest available
-        # physical GPU. This keeps single-GPU and repurposed machines runnable
-        # without requiring operators to edit AMGG_PREFERRED_GPU/AMGG_ALLOWED_GPUS.
+        # physical GPU that is actually present.  Do not fall back outside the
+        # allow-list; GPU3 is known-bad on the AMGG server and GPU2 can run hot.
         candidate_indices = [preferred_index] + [index for index in allowed_indices if index != preferred_index]
         selected_physical = next((index for index in candidate_indices if index in by_physical_index), None)
         if selected_physical is None:
-            selected_physical = ordered_gpus[0].physical_index
-            print(
-                f"[AMGG] Warning: none of allowed physical GPUs {allowed_indices} were found;"
-                f" falling back to physical GPU {selected_physical}.",
-                flush=True,
+            detected_indices = [gpu.physical_index for gpu in detected]
+            raise SystemExit(
+                f"None of the allowed AMGG physical GPUs {allowed_indices} are present. "
+                f"Detected physical GPUs: {detected_indices}. Set AMGG_ALLOWED_GPUS/AMGG_PREFERRED_GPU explicitly "
+                "only if you intentionally want to use another card."
             )
         elif selected_physical != preferred_index:
             print(

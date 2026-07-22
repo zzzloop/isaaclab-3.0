@@ -42,7 +42,7 @@ amgg_record_demos = _load_record_module()
 class TestAmggGpu(unittest.TestCase):
     """Validate stable GPU mapping before Isaac Sim starts."""
 
-    def test_preferred_physical_gpu_is_mapped_without_hiding_devices(self) -> None:
+    def test_default_physical_gpu_one_is_mapped_without_hiding_devices(self) -> None:
         inventory = [
             amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:B1:00.0"),
             amgg_gpu._GpuInfo(1, "GPU-one", "00000000:31:00.0"),
@@ -54,11 +54,11 @@ class TestAmggGpu(unittest.TestCase):
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
-        self.assertEqual(logical_index, 2)
+        self.assertEqual(logical_index, 1)
         self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
         self.assertEqual(environment["CUDA_DEVICE_ORDER"], "PCI_BUS_ID")
-        self.assertEqual(environment["NV_GPU_INDEX"], "2")
-        self.assertEqual(arguments[-2:], ["--device", "cuda:2"])
+        self.assertEqual(environment["NV_GPU_INDEX"], "1")
+        self.assertEqual(arguments[-2:], ["--device", "cuda:1"])
 
     def test_explicit_device_preserves_environment(self) -> None:
         arguments = ["amgg_teleop.py", "--device", "cuda:1"]
@@ -85,20 +85,17 @@ class TestAmggGpu(unittest.TestCase):
         self.assertEqual(environment["NV_GPU_INDEX"], "1")
         self.assertEqual(arguments[-1], "cuda:1")
 
-    def test_preferred_physical_gpu_falls_back_to_first_allowed(self) -> None:
-        # Single-GPU machine: preferred physical 2 is absent, allowed 1/2 are
-        # absent. Should fall back to physical 0 (the only present GPU) instead
-        # of aborting.
+    def test_default_gpu_one_does_not_fall_back_outside_allow_list(self) -> None:
+        # Single-GPU machine: physical GPU 1 is absent.  The AMGG server should
+        # fail closed instead of silently picking GPU2/GPU3 or another hot card.
         inventory = [amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:01:00.0")]
         arguments = ["amgg_record_demos.py", "--xr"]
         environment = {}
 
-        logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
-
-        self.assertEqual(logical_index, 0)
-        self.assertEqual(environment["NV_GPU_INDEX"], "0")
-        self.assertEqual(arguments[-1], "cuda:0")
-        self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
+        with self.assertRaises(SystemExit):
+            amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+        self.assertNotIn("--device", arguments)
+        self.assertNotIn("NV_GPU_INDEX", environment)
 
     def test_preferred_physical_gpu_falls_back_to_next_allowed(self) -> None:
         # Preferred physical 2 is absent, but allowed physical 0 and 1 are
