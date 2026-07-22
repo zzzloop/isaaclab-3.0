@@ -7,9 +7,6 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import isaaclab.envs.mdp as base_mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
@@ -41,46 +38,9 @@ from .amgg_g1_workspace import (
 )
 
 _CLUTTER_LAYOUT = AMGG_G1_TASK_LAYOUTS["clutter_transfer"]
-_RANDOM_CLUTTER_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_clutter_transfer"]
 _BIMANUAL_LAYOUT = AMGG_G1_TASK_LAYOUTS["bimanual_reorient"]
 _PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["precision_insert"]
-_RANDOM_PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_precision_insert"]
 _BUCKET_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_cube_bucket"]
-_BUCKET_URDF_PATH = (
-    Path(__file__).resolve().parents[1] / "assets" / "data" / "objects" / "bucket" / "bucket.urdf"
-)
-_G1_INSPIRE_USD_RELATIVE_PATH = Path("Isaac") / "IsaacLab" / "Robots" / "Unitree" / "G1" / "g1_29dof_inspire_hand.usd"
-_G1_INSPIRE_USD_REPO_PATH = (
-    Path(__file__).resolve().parents[1] / "assets" / "data" / "robots" / "unitree_g1" / "g1_29dof_inspire_hand.usd"
-)
-
-
-def _resolve_g1_inspire_usd_path(default_usd_path: str) -> str:
-    """Resolve the G1 Inspire USD locally when an offline asset path is configured."""
-    explicit_path = os.environ.get("AMGG_G1_USD_PATH")
-    if explicit_path:
-        candidate = Path(explicit_path).expanduser()
-        if candidate.is_file():
-            return str(candidate)
-        raise FileNotFoundError(
-            f"AMGG_G1_USD_PATH points to a missing file: {candidate}. "
-            "Unset it or point it at g1_29dof_inspire_hand.usd."
-        )
-
-    assets_root = os.environ.get("AMGG_ISAAC_ASSETS_ROOT")
-    if assets_root:
-        candidate = Path(assets_root).expanduser() / _G1_INSPIRE_USD_RELATIVE_PATH
-        if candidate.is_file():
-            return str(candidate)
-        raise FileNotFoundError(
-            f"AMGG_ISAAC_ASSETS_ROOT does not contain {_G1_INSPIRE_USD_RELATIVE_PATH}: {candidate}. "
-            "Unset it or point it at the local Assets/Isaac/6.0 directory."
-        )
-
-    if _G1_INSPIRE_USD_REPO_PATH.is_file():
-        return str(_G1_INSPIRE_USD_REPO_PATH)
-
-    return default_usd_path
 
 
 def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> dict:
@@ -133,23 +93,6 @@ def _goal_marker(position: tuple[float, float, float], size: tuple[float, float,
         spawn=sim_utils.CuboidCfg(
             size=size,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color, opacity=0.42, roughness=0.8),
-        ),
-    )
-
-
-def _collision_box(
-    prim_path: str,
-    position: tuple[float, float, float],
-    size: tuple[float, float, float],
-) -> RigidObjectCfg:
-    return RigidObjectCfg(
-        prim_path=prim_path,
-        init_state=RigidObjectCfg.InitialStateCfg(pos=position),
-        spawn=sim_utils.CuboidCfg(
-            size=size,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.08, 0.72, 0.22), opacity=0.0),
         ),
     )
 
@@ -250,85 +193,27 @@ class AmggG1ClutterTransferSceneCfg(AmggG1BaseSceneCfg):
 
 
 @configclass
-class AmggG1RandomClutterTransferSceneCfg(AmggG1BaseSceneCfg):
-    """Randomized orange-target transfer among multiple visual distractors."""
-
-    object = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=_RANDOM_CLUTTER_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["random_clutter_transfer"]
-        ),
-        spawn=sim_utils.CuboidCfg(size=(0.070, 0.070, 0.070), **_dynamic_material((0.95, 0.28, 0.04))),
-    )
-    distractor_a = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/DistractorA",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_RANDOM_CLUTTER_LAYOUT["distractor_a"]),
-        spawn=sim_utils.CuboidCfg(size=(0.060, 0.060, 0.065), **_dynamic_material((0.08, 0.35, 0.92))),
-    )
-    distractor_b = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/DistractorB",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_RANDOM_CLUTTER_LAYOUT["distractor_b"]),
-        spawn=sim_utils.CylinderCfg(radius=0.032, height=0.075, **_dynamic_material((0.88, 0.78, 0.08))),
-    )
-    distractor_c = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/DistractorC",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_RANDOM_CLUTTER_LAYOUT["distractor_c"]),
-        spawn=sim_utils.CuboidCfg(size=(0.055, 0.070, 0.060), **_dynamic_material((0.58, 0.16, 0.86))),
-    )
-    distractor_d = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/DistractorD",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_RANDOM_CLUTTER_LAYOUT["distractor_d"]),
-        spawn=sim_utils.CuboidCfg(size=(0.050, 0.050, 0.080), **_dynamic_material((0.10, 0.72, 0.72))),
-    )
-    goal = _goal_marker(_RANDOM_CLUTTER_LAYOUT["goal_marker"], (0.17, 0.17, 0.008), (0.08, 0.85, 0.22))
-
-
-@configclass
 class AmggG1RandomCubeBucketSceneCfg(AmggG1BaseSceneCfg):
-    """Randomized cube placement into a reachable bucket mesh with distractors."""
+    """Randomized cube placement into a reachable four-wall bucket."""
 
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=_BUCKET_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["random_cube_bucket"]
         ),
-        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.045), **_dynamic_material((0.95, 0.28, 0.04))),
+        spawn=sim_utils.CuboidCfg(size=(0.055, 0.055, 0.055), **_dynamic_material((0.95, 0.28, 0.04))),
     )
-    distractor_a = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/BucketDistractorA",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_BUCKET_LAYOUT["distractor_a"]),
-        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.045), **_dynamic_material((0.08, 0.35, 0.92))),
+    bucket_left = _static_box(
+        "{ENV_REGEX_NS}/BucketLeft", _BUCKET_LAYOUT["bucket_left"], (0.018, 0.120, 0.10), (0.08, 0.72, 0.22)
     )
-    distractor_b = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/BucketDistractorB",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_BUCKET_LAYOUT["distractor_b"]),
-        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.045), **_dynamic_material((0.88, 0.78, 0.08))),
+    bucket_right = _static_box(
+        "{ENV_REGEX_NS}/BucketRight", _BUCKET_LAYOUT["bucket_right"], (0.018, 0.120, 0.10), (0.08, 0.72, 0.22)
     )
-    distractor_c = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/BucketDistractorC",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=_BUCKET_LAYOUT["distractor_c"]),
-        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.045), **_dynamic_material((0.58, 0.16, 0.86))),
+    bucket_near = _static_box(
+        "{ENV_REGEX_NS}/BucketNear", _BUCKET_LAYOUT["bucket_near"], (0.160, 0.018, 0.10), (0.08, 0.72, 0.22)
     )
-    bucket = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Bucket",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=_BUCKET_LAYOUT["bucket"]),
-        spawn=sim_utils.UrdfFileCfg(
-            asset_path=str(_BUCKET_URDF_PATH),
-            fix_base=True,
-            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-        ),
-    )
-    bucket_collision_left = _collision_box(
-        "{ENV_REGEX_NS}/BucketCollisionLeft", _BUCKET_LAYOUT["bucket_collision_left"], (0.018, 0.086, 0.10)
-    )
-    bucket_collision_right = _collision_box(
-        "{ENV_REGEX_NS}/BucketCollisionRight", _BUCKET_LAYOUT["bucket_collision_right"], (0.018, 0.086, 0.10)
-    )
-    bucket_collision_near = _collision_box(
-        "{ENV_REGEX_NS}/BucketCollisionNear", _BUCKET_LAYOUT["bucket_collision_near"], (0.160, 0.018, 0.10)
-    )
-    bucket_collision_far = _collision_box(
-        "{ENV_REGEX_NS}/BucketCollisionFar", _BUCKET_LAYOUT["bucket_collision_far"], (0.160, 0.018, 0.10)
+    bucket_far = _static_box(
+        "{ENV_REGEX_NS}/BucketFar", _BUCKET_LAYOUT["bucket_far"], (0.160, 0.018, 0.10), (0.08, 0.72, 0.22)
     )
     goal = _goal_marker(_BUCKET_LAYOUT["goal_marker"], (0.105, 0.075, 0.006), (0.10, 0.85, 0.18))
 
@@ -383,44 +268,6 @@ class AmggG1PrecisionInsertSceneCfg(AmggG1BaseSceneCfg):
         "{ENV_REGEX_NS}/GuideFar", _PRECISION_LAYOUT["guide_far"], (0.060, 0.018, 0.11), (0.55, 0.12, 0.75)
     )
     goal = _goal_marker(_PRECISION_LAYOUT["goal_marker"], (0.055, 0.055, 0.008), (0.72, 0.18, 0.90))
-
-
-@configclass
-class AmggG1RandomPrecisionInsertSceneCfg(AmggG1BaseSceneCfg):
-    """Precision insertion with a wider randomized key start pose."""
-
-    object = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Object",
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=_RANDOM_PRECISION_LAYOUT["object"], rot=AMGG_G1_TASK_OBJECT_ROTATIONS["random_precision_insert"]
-        ),
-        spawn=sim_utils.CuboidCfg(size=(0.045, 0.045, 0.14), **_dynamic_material((0.96, 0.72, 0.05), 0.20)),
-    )
-    guide_left = _static_box(
-        "{ENV_REGEX_NS}/GuideLeft",
-        _RANDOM_PRECISION_LAYOUT["guide_left"],
-        (0.025, 0.090, 0.11),
-        (0.55, 0.12, 0.75),
-    )
-    guide_right = _static_box(
-        "{ENV_REGEX_NS}/GuideRight",
-        _RANDOM_PRECISION_LAYOUT["guide_right"],
-        (0.025, 0.090, 0.11),
-        (0.55, 0.12, 0.75),
-    )
-    guide_near = _static_box(
-        "{ENV_REGEX_NS}/GuideNear",
-        _RANDOM_PRECISION_LAYOUT["guide_near"],
-        (0.060, 0.018, 0.11),
-        (0.55, 0.12, 0.75),
-    )
-    guide_far = _static_box(
-        "{ENV_REGEX_NS}/GuideFar",
-        _RANDOM_PRECISION_LAYOUT["guide_far"],
-        (0.060, 0.018, 0.11),
-        (0.55, 0.12, 0.75),
-    )
-    goal = _goal_marker(_RANDOM_PRECISION_LAYOUT["goal_marker"], (0.055, 0.055, 0.008), (0.72, 0.18, 0.90))
 
 
 @configclass
@@ -479,12 +326,6 @@ class ClutterPolicyCfg(AmggG1PolicyCfg):
 
 
 @configclass
-class RandomClutterPolicyCfg(AmggG1PolicyCfg):
-    goal = ObsTerm(func=mdp.g1_task_goal, params={"task_slug": "random_clutter_transfer"})
-    progress = ObsTerm(func=mdp.g1_task_progress, params={"task_slug": "random_clutter_transfer"})
-
-
-@configclass
 class RandomCubeBucketPolicyCfg(AmggG1PolicyCfg):
     goal = ObsTerm(func=mdp.g1_task_goal, params={"task_slug": "random_cube_bucket"})
     progress = ObsTerm(func=mdp.g1_task_progress, params={"task_slug": "random_cube_bucket"})
@@ -503,19 +344,8 @@ class PrecisionPolicyCfg(AmggG1PolicyCfg):
 
 
 @configclass
-class RandomPrecisionPolicyCfg(AmggG1PolicyCfg):
-    goal = ObsTerm(func=mdp.g1_task_goal, params={"task_slug": "random_precision_insert"})
-    progress = ObsTerm(func=mdp.g1_task_progress, params={"task_slug": "random_precision_insert"})
-
-
-@configclass
 class ClutterObservationsCfg:
     policy: ClutterPolicyCfg = ClutterPolicyCfg()
-
-
-@configclass
-class RandomClutterObservationsCfg:
-    policy: RandomClutterPolicyCfg = RandomClutterPolicyCfg()
 
 
 @configclass
@@ -531,11 +361,6 @@ class BimanualObservationsCfg:
 @configclass
 class PrecisionObservationsCfg:
     policy: PrecisionPolicyCfg = PrecisionPolicyCfg()
-
-
-@configclass
-class RandomPrecisionObservationsCfg:
-    policy: RandomPrecisionPolicyCfg = RandomPrecisionPolicyCfg()
 
 
 @configclass
@@ -557,57 +382,6 @@ class AmggG1EventsCfg:
 
 
 @configclass
-class RandomClutterEventsCfg(AmggG1EventsCfg):
-    """Randomize target and distractor poses for clutter generalization."""
-
-    reset_object = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": AMGG_G1_TASK_OBJECT_RESET_RANGES["random_clutter_transfer"],
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("object"),
-        },
-    )
-    reset_distractor_a = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.030, 0.030), "y": (-0.025, 0.025), "yaw": (-0.80, 0.80)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("distractor_a"),
-        },
-    )
-    reset_distractor_b = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.025, 0.025), "y": (-0.025, 0.025), "yaw": (-0.80, 0.80)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("distractor_b"),
-        },
-    )
-    reset_distractor_c = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.030, 0.030), "y": (-0.020, 0.020), "yaw": (-0.80, 0.80)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("distractor_c"),
-        },
-    )
-    reset_distractor_d = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.025, 0.025), "y": (-0.020, 0.020), "yaw": (-0.80, 0.80)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("distractor_d"),
-        },
-    )
-
-
-@configclass
 class RandomCubeBucketEventsCfg(AmggG1EventsCfg):
     """Randomize the cube start pose over a wider reachable tabletop patch."""
 
@@ -618,33 +392,6 @@ class RandomCubeBucketEventsCfg(AmggG1EventsCfg):
             "pose_range": AMGG_G1_TASK_OBJECT_RESET_RANGES["random_cube_bucket"],
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
-        },
-    )
-    reset_distractor_a = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.025, 0.025), "y": (-0.025, 0.025), "yaw": (-0.60, 0.60)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("distractor_a"),
-        },
-    )
-    reset_distractor_b = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.025, 0.025), "y": (-0.020, 0.020), "yaw": (-0.60, 0.60)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("distractor_b"),
-        },
-    )
-    reset_distractor_c = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.020, 0.020), "y": (-0.020, 0.020), "yaw": (-0.60, 0.60)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("distractor_c"),
         },
     )
 
@@ -680,21 +427,6 @@ class PrecisionEventsCfg(AmggG1EventsCfg):
 
 
 @configclass
-class RandomPrecisionEventsCfg(AmggG1EventsCfg):
-    """Randomize the key start pose for precision-insertion generalization."""
-
-    reset_object = EventTerm(
-        func=base_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": AMGG_G1_TASK_OBJECT_RESET_RANGES["random_precision_insert"],
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("object"),
-        },
-    )
-
-
-@configclass
 class AmggG1FailureTermsCfg:
     time_out = DoneTerm(func=base_mdp.time_out, time_out=True)
     dropped = DoneTerm(func=mdp.g1_object_dropped)
@@ -705,11 +437,6 @@ class AmggG1FailureTermsCfg:
 @configclass
 class ClutterTerminationsCfg(AmggG1FailureTermsCfg):
     success = DoneTerm(func=mdp.clutter_transfer_success)
-
-
-@configclass
-class RandomClutterTerminationsCfg(AmggG1FailureTermsCfg):
-    success = DoneTerm(func=mdp.random_clutter_transfer_success)
 
 
 @configclass
@@ -728,11 +455,6 @@ class PrecisionTerminationsCfg(AmggG1FailureTermsCfg):
 
 
 @configclass
-class RandomPrecisionTerminationsCfg(AmggG1FailureTermsCfg):
-    success = DoneTerm(func=mdp.random_precision_insert_success)
-
-
-@configclass
 class AmggG1BaseEnvCfg(PickPlaceG1InspireFTPEnvCfg):
     """Shared official G1/Pink/PICO configuration for the research suite."""
 
@@ -740,8 +462,6 @@ class AmggG1BaseEnvCfg(PickPlaceG1InspireFTPEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.scene.robot.spawn.usd_path = _resolve_g1_inspire_usd_path(self.scene.robot.spawn.usd_path)
-        self.actions.pink_ik_cfg.controller.usd_path = self.scene.robot.spawn.usd_path
         # The task and the robot hands are both visible from this front
         # three-quarter view.  Sensor cameras remain independent of the viewer.
         self.viewer.eye = (1.45, 1.65, 1.55)
@@ -766,20 +486,6 @@ class AmggG1ClutterTransferEnvCfg(AmggG1BaseEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.episode_length_s = 45.0
-
-
-@configclass
-class AmggG1RandomClutterTransferEnvCfg(AmggG1BaseEnvCfg):
-    scene: AmggG1RandomClutterTransferSceneCfg = AmggG1RandomClutterTransferSceneCfg(
-        num_envs=1, env_spacing=2.5, replicate_physics=True
-    )
-    observations: RandomClutterObservationsCfg = RandomClutterObservationsCfg()
-    events: RandomClutterEventsCfg = RandomClutterEventsCfg()
-    terminations: RandomClutterTerminationsCfg = RandomClutterTerminationsCfg()
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.episode_length_s = 50.0
 
 
 @configclass
@@ -828,20 +534,6 @@ class AmggG1PrecisionInsertEnvCfg(AmggG1BaseEnvCfg):
         self.episode_length_s = 50.0
 
 
-@configclass
-class AmggG1RandomPrecisionInsertEnvCfg(AmggG1BaseEnvCfg):
-    scene: AmggG1RandomPrecisionInsertSceneCfg = AmggG1RandomPrecisionInsertSceneCfg(
-        num_envs=1, env_spacing=2.5, replicate_physics=True
-    )
-    observations: RandomPrecisionObservationsCfg = RandomPrecisionObservationsCfg()
-    events: RandomPrecisionEventsCfg = RandomPrecisionEventsCfg()
-    terminations: RandomPrecisionTerminationsCfg = RandomPrecisionTerminationsCfg()
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.episode_length_s = 55.0
-
-
 class _AmggG1XrTimingMixin:
     """Use a 60 Hz control/render loop for lower-latency XR teleoperation."""
 
@@ -857,11 +549,6 @@ class AmggG1ClutterTransferXrEnvCfg(_AmggG1XrTimingMixin, AmggG1ClutterTransferE
 
 
 @configclass
-class AmggG1RandomClutterTransferXrEnvCfg(_AmggG1XrTimingMixin, AmggG1RandomClutterTransferEnvCfg):
-    """Low-latency XR variant of the randomized clutter-transfer task."""
-
-
-@configclass
 class AmggG1RandomCubeBucketXrEnvCfg(_AmggG1XrTimingMixin, AmggG1RandomCubeBucketEnvCfg):
     """Low-latency XR variant of the randomized cube-to-bucket task."""
 
@@ -874,8 +561,3 @@ class AmggG1BimanualReorientXrEnvCfg(_AmggG1XrTimingMixin, AmggG1BimanualReorien
 @configclass
 class AmggG1PrecisionInsertXrEnvCfg(_AmggG1XrTimingMixin, AmggG1PrecisionInsertEnvCfg):
     """Low-latency XR variant of the precision-insertion task."""
-
-
-@configclass
-class AmggG1RandomPrecisionInsertXrEnvCfg(_AmggG1XrTimingMixin, AmggG1RandomPrecisionInsertEnvCfg):
-    """Low-latency XR variant of the randomized precision-insertion task."""

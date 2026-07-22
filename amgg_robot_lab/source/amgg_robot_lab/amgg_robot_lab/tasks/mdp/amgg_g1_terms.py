@@ -21,10 +21,8 @@ if TYPE_CHECKING:
 
 _GOAL_TOLERANCES_M = {
     "clutter_transfer": 0.075,
-    "random_clutter_transfer": 0.080,
     "bimanual_reorient": 0.10,
     "precision_insert": 0.04,
-    "random_precision_insert": 0.04,
     "random_cube_bucket": 0.06,
 }
 _GOALS = {
@@ -89,10 +87,8 @@ def g1_task_progress(env: ManagerBasedRLEnv, task_slug: str) -> torch.Tensor:
     distance = torch.linalg.vector_norm(position - goal[:, :3], dim=1)
     scale = {
         "clutter_transfer": 0.75,
-        "random_clutter_transfer": 0.75,
         "bimanual_reorient": 0.55,
         "precision_insert": 0.75,
-        "random_precision_insert": 0.75,
         "random_cube_bucket": 0.65,
     }[task_slug]
     return (1.0 - distance / scale).clamp(0.0, 1.0).unsqueeze(1)
@@ -107,20 +103,6 @@ def clutter_transfer_success(
     """Check stable placement of the selected block in the target region."""
     position = _position_env(env)
     goal = position.new_tensor(_GOALS["clutter_transfer"][:3])
-    xy_ok = torch.linalg.vector_norm(position[:, :2] - goal[:2], dim=1) < xy_tolerance
-    z_ok = torch.abs(position[:, 2] - goal[2]) < z_tolerance
-    return xy_ok & z_ok & _settled(env, max_speed=max_speed)
-
-
-def random_clutter_transfer_success(
-    env: ManagerBasedRLEnv,
-    xy_tolerance: float = 0.095,
-    z_tolerance: float = 0.055,
-    max_speed: float = 0.15,
-) -> torch.Tensor:
-    """Check stable orange-target placement for the randomized clutter task."""
-    position = _position_env(env)
-    goal = position.new_tensor(_GOALS["random_clutter_transfer"][:3])
     xy_ok = torch.linalg.vector_norm(position[:, :2] - goal[:2], dim=1) < xy_tolerance
     z_ok = torch.abs(position[:, 2] - goal[2]) < z_tolerance
     return xy_ok & z_ok & _settled(env, max_speed=max_speed)
@@ -159,26 +141,6 @@ def precision_insert_success(
     obj = _object(env)
     position = _position_env(env)
     goal = position.new_tensor(_GOALS["precision_insert"][:3])
-    xy_ok = torch.linalg.vector_norm(position[:, :2] - goal[:2], dim=1) < xy_tolerance
-    z_ok = torch.abs(position[:, 2] - goal[2]) < z_tolerance
-    local_z = torch.zeros((env.num_envs, 3), device=env.device)
-    local_z[:, 2] = 1.0
-    long_axis_w = math_utils.quat_apply(obj.data.root_quat_w.torch, local_z)
-    vertical = torch.abs(long_axis_w[:, 2]) > vertical_axis_cosine
-    return xy_ok & z_ok & vertical & _settled(env, max_speed=max_speed)
-
-
-def random_precision_insert_success(
-    env: ManagerBasedRLEnv,
-    xy_tolerance: float = 0.045,
-    z_tolerance: float = 0.07,
-    vertical_axis_cosine: float = 0.86,
-    max_speed: float = 0.15,
-) -> torch.Tensor:
-    """Check randomized precision insertion without requiring a top face."""
-    obj = _object(env)
-    position = _position_env(env)
-    goal = position.new_tensor(_GOALS["random_precision_insert"][:3])
     xy_ok = torch.linalg.vector_norm(position[:, :2] - goal[:2], dim=1) < xy_tolerance
     z_ok = torch.abs(position[:, 2] - goal[2]) < z_tolerance
     local_z = torch.zeros((env.num_envs, 3), device=env.device)

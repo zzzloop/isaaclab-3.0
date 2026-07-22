@@ -51,11 +51,6 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
                 "z_tolerance": 0.055,
                 "max_speed": 0.15,
             },
-            "random_clutter_transfer_success": {
-                "xy_tolerance": 0.095,
-                "z_tolerance": 0.055,
-                "max_speed": 0.15,
-            },
             "random_cube_bucket_success": {
                 "x_tolerance": 0.060,
                 "y_tolerance": 0.050,
@@ -74,12 +69,6 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
                 "xy_tolerance": 0.04,
                 "z_tolerance": 0.07,
                 "vertical_axis_cosine": 0.88,
-                "max_speed": 0.15,
-            },
-            "random_precision_insert_success": {
-                "xy_tolerance": 0.045,
-                "z_tolerance": 0.07,
-                "vertical_axis_cosine": 0.86,
                 "max_speed": 0.15,
             },
         }
@@ -101,12 +90,6 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
         self.assertIn("x_ok = torch.abs(position[:, 0] - goal[0]) < x_tolerance", self.terms_source)
         self.assertIn("y_ok = torch.abs(position[:, 1] - goal[1]) < y_tolerance", self.terms_source)
         self.assertIn("(position[:, 2] > minimum_z) & (position[:, 2] < maximum_z)", self.terms_source)
-
-    def test_randomized_transfer_and_insertion_have_task_specific_success(self) -> None:
-        self.assertIn('_GOALS["random_clutter_transfer"]', self.terms_source)
-        self.assertIn('_GOALS["random_precision_insert"]', self.terms_source)
-        self.assertIn("def random_clutter_transfer_success", self.terms_source)
-        self.assertIn("def random_precision_insert_success", self.terms_source)
 
     def test_plain_teleop_reports_termination_reason(self) -> None:
         teleop_source = (
@@ -146,14 +129,7 @@ class TestAmggG1SuccessFeedback(unittest.TestCase):
 
     def test_readme_documents_all_g1_recording_and_conversion_commands(self) -> None:
         readme = (self.repo_root / "amgg_robot_lab" / "README_CN.md").read_text(encoding="utf-8")
-        for task_name in (
-            "ClutterTransfer",
-            "RandomClutterTransfer",
-            "RandomCubeBucket",
-            "BimanualReorient",
-            "PrecisionInsert",
-            "RandomPrecisionInsert",
-        ):
+        for task_name in ("ClutterTransfer", "RandomCubeBucket", "BimanualReorient", "PrecisionInsert"):
             self.assertIn(f"Isaac-AMGG-G1-{task_name}-XR-v0", readme)
             self.assertIn(f"Isaac-AMGG-G1-{task_name}-v0", readme)
         self.assertIn("amgg_convert_g1_hdf5_to_lerobot.py", readme)

@@ -1,6 +1,6 @@
 # AMGG Robot Lab：仿真、PICO 遥操、自动评测与 LeRobot 数据闭环
 
-本目录是与 Isaac Lab 核心代码隔离的 AMGG 机器人研究工程。当前已经包含：原始模型留档、可重复生成的标准化 URDF、Isaac Lab 本体配置、离线 FK/Jacobian/双臂 IK、PICO 控制器遥操、六个 G1 任务、自动成功/失败判定、官方 HDF5 录制入口、LeRobot Dataset v3 转换器、四相机数据契约，以及真机 ROS 2 接口边界。
+本目录是与 Isaac Lab 核心代码隔离的 AMGG 机器人研究工程。当前已经包含：原始模型留档、可重复生成的标准化 URDF、Isaac Lab 本体配置、离线 FK/Jacobian/双臂 IK、PICO 控制器遥操、四个任务、自动成功/失败判定、官方 HDF5 录制入口、LeRobot Dataset v3 转换器、四相机数据契约，以及真机 ROS 2 接口边界。
 
 本机没有完整 Isaac Sim 运行时，因此本机能完成的是模型、数值运动学、数据格式和代码静态验收；最终的 PhysX、Pink、渲染、PICO 和相机方向必须在服务器 `lab6` 环境按本文“服务器验收”章节逐项运行。没有经过服务器验收前，不应把当前参数描述为已完成物理标定。
 
@@ -29,7 +29,7 @@ amgg_robot_lab/
 │   ├── assets/                            # 本体 ArticulationCfg 与模型文件
 │   ├── contracts/                         # 关节、frame、相机公共 ABI
 │   ├── kinematics/                        # URDF FK、Jacobian、DLS IK
-│   ├── tasks/                             # 六个 G1 场景、MDP、Gym 注册
+│   ├── tasks/                             # 四个场景、MDP、Gym 注册
 │   ├── teleop/                            # PICO pipeline、重定向、安全限制
 │   ├── recording/                         # HDF5/LeRobot schema
 │   └── real/                              # Dry-run 与 ROS 2 后端
@@ -47,7 +47,7 @@ amgg_robot_lab/
 | 离线 FK/Jacobian/IK | `kinematics/amgg_urdf_kinematics.py` |
 | Isaac Pink IK 动作 | `tasks/mdp/amgg_actions.py` |
 | 成功、失败、进度、观测 | `tasks/mdp/amgg_terms.py` |
-| 六个 G1 完整环境 | `tasks/amgg_manipulation_env_cfg.py` |
+| 四个完整环境 | `tasks/amgg_manipulation_env_cfg.py` |
 | PICO 控制器映射 | `teleop/amgg_pico_pipeline.py` |
 | LeRobot 特征契约 | `recording/amgg_dataset_schema.py` |
 | 真机通信 | `real/amgg_ros2_backend.py` |
@@ -118,7 +118,7 @@ observation.images.overview
 
 Isaac Lab 运行时使用 Pink IK，但读取同一份 URDF、同一关节顺序、同一限位和同一 TCP。因此离线/真机侧与仿真侧不是两套独立定义。
 
-## 5. 六个论文任务
+## 5. 四个论文任务
 
 | Gym Task ID | 任务 | 成功条件 | 失败条件 |
 |---|---|---|---|
@@ -201,7 +201,7 @@ ControllerTracker initialized (left + right)
 
 ## 8. 自动判定录制
 
-### 当前六个 G1 XR 任务
+### 当前四个 G1 XR 任务
 
 `amgg_record_demos.py` 现在会为 AMGG 自动启用录制，不再要求 PICO 客户端先发送额外的 `START` 消息；当第一帧有效 controller action 到达时即开始 `env.step()` 和 HDF5 记录。若需要恢复官方的远端 START/STOP 门控，可显式加 `--no-auto_start_recording`。
 
@@ -219,16 +219,6 @@ mkdir -p datasets
   --num_demos 1 \
   --num_success_steps 12 \
   --dataset_file ./datasets/amgg_g1_clutter_transfer_rgb.hdf5
-
-# 任务五：随机杂乱物体搬运
-./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
-  --task Isaac-AMGG-G1-RandomClutterTransfer-XR-v0 \
-  --visualizer kit \
-  --xr \
-  --enable_cameras \
-  --num_demos 1 \
-  --num_success_steps 12 \
-  --dataset_file ./datasets/amgg_g1_random_clutter_transfer_rgb.hdf5
 
 # 任务四：随机方块入桶
 ./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
@@ -259,19 +249,9 @@ mkdir -p datasets
   --num_demos 1 \
   --num_success_steps 15 \
   --dataset_file ./datasets/amgg_g1_precision_insert_rgb.hdf5
-
-# 任务六：随机精密插入
-./isaaclab.sh -p amgg_robot_lab/scripts/amgg_record_demos.py \
-  --task Isaac-AMGG-G1-RandomPrecisionInsert-XR-v0 \
-  --visualizer kit \
-  --xr \
-  --enable_cameras \
-  --num_demos 1 \
-  --num_success_steps 15 \
-  --dataset_file ./datasets/amgg_g1_random_precision_insert_rgb.hdf5
 ```
 
-六个 XR 配置运行在 60 Hz；`--step_hz` 在 XR/IsaacTeleop 路径中不会限速，因此无需填写。任务满足连续成功步数后，脚本会打印 `Episode exported` 和 `Demo N saved`，然后自动 reset。G1 HDF5 至少应包含 38-D `actions`/`processed_actions`、53-D `obs/robot_joint_pos`、12-D `obs/tactile`、左右 EEF 位姿、任务状态，以及 `obs/image_front` 和 `obs/image_overview` 两路 RGB。
+四个 XR 配置运行在 60 Hz；`--step_hz` 在 XR/IsaacTeleop 路径中不会限速，因此无需填写。任务满足连续成功步数后，脚本会打印 `Episode exported` 和 `Demo N saved`，然后自动 reset。G1 HDF5 至少应包含 38-D `actions`/`processed_actions`、53-D `obs/robot_joint_pos`、12-D `obs/tactile`、左右 EEF 位姿、任务状态，以及 `obs/image_front` 和 `obs/image_overview` 两路 RGB。
 
 ### 旧版 AMGG 23-DoF 任务
 
@@ -337,7 +317,7 @@ pip install lerobot h5py numpy
 pip install -e ~/zzk_data/IsaacLab/amgg_robot_lab/source/amgg_robot_lab
 ```
 
-当前六个 G1 XR 任务必须使用 `amgg_convert_g1_hdf5_to_lerobot.py`，不能使用旧的 23/21 维转换器。录制源是 60 Hz，下面统一同步降采样为 30 Hz LeRobot 数据：
+当前四个 G1 XR 任务必须使用 `amgg_convert_g1_hdf5_to_lerobot.py`，不能使用旧的 23/21 维转换器。录制源是 60 Hz，下面统一同步降采样为 30 Hz LeRobot 数据：
 
 ```bash
 # 任务一：杂乱物体搬运
@@ -346,16 +326,6 @@ python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
   datasets/lerobot_amgg_g1_clutter_transfer \
   --task Isaac-AMGG-G1-ClutterTransfer-v0 \
   --repo_id local/amgg_g1_clutter_transfer \
-  --source_fps 60 \
-  --fps 30 \
-  --action_source raw
-
-# 任务五：随机杂乱物体搬运
-python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
-  datasets/amgg_g1_random_clutter_transfer_rgb.hdf5 \
-  datasets/lerobot_amgg_g1_random_clutter_transfer \
-  --task Isaac-AMGG-G1-RandomClutterTransfer-v0 \
-  --repo_id local/amgg_g1_random_clutter_transfer \
   --source_fps 60 \
   --fps 30 \
   --action_source raw
@@ -386,16 +356,6 @@ python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
   datasets/lerobot_amgg_g1_precision_insert \
   --task Isaac-AMGG-G1-PrecisionInsert-v0 \
   --repo_id local/amgg_g1_precision_insert \
-  --source_fps 60 \
-  --fps 30 \
-  --action_source raw
-
-# 任务六：随机精密插入
-python amgg_robot_lab/scripts/amgg_convert_g1_hdf5_to_lerobot.py \
-  datasets/amgg_g1_random_precision_insert_rgb.hdf5 \
-  datasets/lerobot_amgg_g1_random_precision_insert \
-  --task Isaac-AMGG-G1-RandomPrecisionInsert-v0 \
-  --repo_id local/amgg_g1_random_precision_insert \
   --source_fps 60 \
   --fps 30 \
   --action_source raw
@@ -480,6 +440,6 @@ python ~/zzk_data/IsaacLab/amgg_robot_lab/scripts/amgg_convert_hdf5_to_lerobot.p
 - actuator gain 与碰撞稳定性调参；
 - 四相机视场确认；
 - Pink frame/joint 运行时映射确认；
-- 六个 G1 任务各至少一次人工成功与自动判定；
+- 四个任务各至少一次人工成功与自动判定；
 - PICO 左右手姿态补偿微调；
 - 完整 RGB HDF5 的实际写盘和 LeRobot 视频编码验收。

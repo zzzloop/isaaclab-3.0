@@ -29,15 +29,7 @@ class TestAmggG1Workspace(unittest.TestCase):
         reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]
 
         self.assertEqual(
-            set(layouts),
-            {
-                "clutter_transfer",
-                "random_clutter_transfer",
-                "random_cube_bucket",
-                "bimanual_reorient",
-                "precision_insert",
-                "random_precision_insert",
-            },
+            set(layouts), {"clutter_transfer", "random_cube_bucket", "bimanual_reorient", "precision_insert"}
         )
         for task_slug, layout in layouts.items():
             for name, position in layout.items():
@@ -66,26 +58,10 @@ class TestAmggG1Workspace(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('AMGG_G1_TASK_LAYOUTS["clutter_transfer"]', scene_source)
-        self.assertIn('AMGG_G1_TASK_LAYOUTS["random_clutter_transfer"]', scene_source)
         self.assertIn('AMGG_G1_TASK_LAYOUTS["random_cube_bucket"]', scene_source)
         self.assertIn('AMGG_G1_TASK_LAYOUTS["bimanual_reorient"]', scene_source)
         self.assertIn('AMGG_G1_TASK_LAYOUTS["precision_insert"]', scene_source)
-        self.assertIn('AMGG_G1_TASK_LAYOUTS["random_precision_insert"]', scene_source)
         self.assertIn('layout["goal"]', terms_source)
-
-    def test_g1_robot_asset_can_be_overridden_locally(self) -> None:
-        env_source = (
-            self.project_root
-            / "source"
-            / "amgg_robot_lab"
-            / "amgg_robot_lab"
-            / "tasks"
-            / "amgg_g1_manipulation_env_cfg.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn("AMGG_G1_USD_PATH", env_source)
-        self.assertIn("AMGG_ISAAC_ASSETS_ROOT", env_source)
-        self.assertIn("_resolve_g1_inspire_usd_path(self.scene.robot.spawn.usd_path)", env_source)
-        self.assertIn("self.actions.pink_ik_cfg.controller.usd_path = self.scene.robot.spawn.usd_path", env_source)
 
     def test_bimanual_spawn_is_separated_from_supports(self) -> None:
         layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["bimanual_reorient"]
@@ -114,8 +90,7 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertGreaterEqual(layouts["bimanual_reorient"]["left_support"][1], 0.38)
         self.assertGreaterEqual(layouts["bimanual_reorient"]["right_support"][1], 0.38)
         self.assertGreaterEqual(layouts["precision_insert"]["goal"][1], 0.36)
-        self.assertGreaterEqual(layouts["random_precision_insert"]["goal"][1], 0.36)
-        self.assertLessEqual(layouts["random_cube_bucket"]["bucket"][1], 0.407)
+        self.assertLessEqual(layouts["random_cube_bucket"]["bucket_far"][1], 0.407)
 
     def test_bimanual_action_widens_both_wrists_only_for_task_two(self) -> None:
         offset = self.workspace["AMGG_G1_BIMANUAL_WRIST_X_OFFSET_M"]
@@ -159,69 +134,11 @@ class TestAmggG1Workspace(unittest.TestCase):
         layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["random_cube_bucket"]
         reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]["random_cube_bucket"]
 
-        self.assertLessEqual(layout["bucket_collision_far"][1], 0.407)
+        self.assertLessEqual(layout["bucket_far"][1], 0.407)
         self.assertGreaterEqual(reset_ranges["x"][1] - reset_ranges["x"][0], 0.16)
         self.assertGreaterEqual(reset_ranges["y"][1] - reset_ranges["y"][0], 0.08)
         self.assertGreater(layout["goal"][0], layout["object"][0])
         self.assertGreater(layout["goal"][1], layout["object"][1])
-        for name in ("distractor_a", "distractor_b", "distractor_c"):
-            self.assertIn(name, layout)
-        self.assertIn("bucket", layout)
-        self.assertIn("bucket_collision_left", layout)
-        self.assertIn("bucket_collision_right", layout)
-        self.assertIn("bucket_collision_near", layout)
-        self.assertIn("bucket_collision_far", layout)
-
-    def test_random_cube_bucket_starts_without_penetration(self) -> None:
-        layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["random_cube_bucket"]
-        reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]["random_cube_bucket"]
-        table_top = 1.0
-        cube_half_extent = 0.045 / 2
-        bucket_outer_radius = 0.120
-        bucket_mesh_bottom = 0.000047
-        bucket_collision_height = 0.10
-
-        self.assertLessEqual(layout["bucket"][1], 0.407)
-        self.assertGreaterEqual(layout["bucket"][2] + bucket_mesh_bottom - table_top, 0.004)
-
-        object_y_far_edge = layout["object"][1] + reset_ranges["y"][1] + cube_half_extent
-        bucket_visual_near_edge = layout["bucket"][1] - bucket_outer_radius
-        self.assertGreaterEqual(bucket_visual_near_edge - object_y_far_edge, 0.005)
-
-        for name in (
-            "bucket_collision_left",
-            "bucket_collision_right",
-            "bucket_collision_near",
-            "bucket_collision_far",
-        ):
-            collision_bottom = layout[name][2] - bucket_collision_height / 2
-            self.assertGreaterEqual(collision_bottom - table_top, 0.004)
-
-    def test_random_cube_bucket_uses_bucket_asset(self) -> None:
-        bucket_dir = (
-            self.project_root
-            / "source"
-            / "amgg_robot_lab"
-            / "amgg_robot_lab"
-            / "assets"
-            / "data"
-            / "objects"
-            / "bucket"
-        )
-        self.assertTrue((bucket_dir / "bucket.urdf").is_file())
-        self.assertTrue((bucket_dir / "meshes" / "bucket.obj").is_file())
-        self.assertTrue((bucket_dir / "meshes" / "bucket.mtl").is_file())
-
-    def test_randomized_variants_have_wider_reachable_resets(self) -> None:
-        reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]
-        self.assertGreater(
-            reset_ranges["random_clutter_transfer"]["x"][1] - reset_ranges["random_clutter_transfer"]["x"][0],
-            reset_ranges["clutter_transfer"]["x"][1] - reset_ranges["clutter_transfer"]["x"][0],
-        )
-        self.assertGreater(
-            reset_ranges["random_precision_insert"]["yaw"][1] - reset_ranges["random_precision_insert"]["yaw"][0],
-            reset_ranges["precision_insert"]["yaw"][1] - reset_ranges["precision_insert"]["yaw"][0],
-        )
 
 
 if __name__ == "__main__":
