@@ -50,7 +50,7 @@ AMGG_G1_TASK_OBJECT_RESET_RANGES: dict[str, dict[str, tuple[float, float]]] = {
     },
     "random_cube_bucket": {
         "x": (-0.090, 0.090),
-        "y": (-0.045, 0.045),
+        "y": (-0.040, 0.040),
         "yaw": (-0.785, 0.785),
     },
 }
@@ -121,17 +121,19 @@ AMGG_G1_TASK_LAYOUTS: dict[str, dict[str, tuple[float, float, float]]] = {
     "random_cube_bucket": {
         # The cube reset range intentionally spans a larger tabletop patch for
         # generalization while the bucket fixture stays inside the observed
-        # forward reach limit.
-        "object": (-0.12, 0.255, 1.030),
-        "distractor_a": (-0.030, 0.255, 1.030),
-        "distractor_b": (0.020, 0.210, 1.030),
-        "distractor_c": (-0.185, 0.330, 1.030),
-        "bucket": (0.080, 0.345, 1.003),
-        "bucket_collision_left": (0.009, 0.345, 1.050),
-        "bucket_collision_right": (0.151, 0.345, 1.050),
-        "bucket_collision_near": (0.080, 0.294, 1.050),
-        "bucket_collision_far": (0.080, 0.396, 1.050),
-        "goal": (0.080, 0.345, 1.026),
-        "goal_marker": (0.080, 0.345, 1.003),
+        # forward reach limit.  Keep the bucket centered between the default
+        # hands and near the forward limit so its visual shell does not overlap
+        # the startup fingertip band.
+        "object": (-0.140, 0.203, 1.030),
+        "distractor_a": (-0.055, 0.225, 1.030),
+        "distractor_b": (0.055, 0.190, 1.030),
+        "distractor_c": (-0.215, 0.280, 1.030),
+        "bucket": (0.000, 0.391, 1.006),
+        "bucket_collision_left": (-0.071, 0.373, 1.055),
+        "bucket_collision_right": (0.071, 0.373, 1.055),
+        "bucket_collision_near": (0.000, 0.339, 1.055),
+        "bucket_collision_far": (0.000, 0.407, 1.055),
+        "goal": (0.000, 0.391, 1.026),
+        "goal_marker": (0.000, 0.391, 1.006),
     },
 }

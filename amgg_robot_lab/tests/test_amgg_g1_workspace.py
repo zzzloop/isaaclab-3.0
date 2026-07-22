@@ -115,7 +115,7 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertGreaterEqual(layouts["bimanual_reorient"]["right_support"][1], 0.38)
         self.assertGreaterEqual(layouts["precision_insert"]["goal"][1], 0.36)
         self.assertGreaterEqual(layouts["random_precision_insert"]["goal"][1], 0.36)
-        self.assertLessEqual(layouts["random_cube_bucket"]["bucket_collision_far"][1], 0.407)
+        self.assertLessEqual(layouts["random_cube_bucket"]["bucket"][1], 0.407)
 
     def test_bimanual_action_widens_both_wrists_only_for_task_two(self) -> None:
         offset = self.workspace["AMGG_G1_BIMANUAL_WRIST_X_OFFSET_M"]
@@ -171,6 +171,31 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertIn("bucket_collision_right", layout)
         self.assertIn("bucket_collision_near", layout)
         self.assertIn("bucket_collision_far", layout)
+
+    def test_random_cube_bucket_starts_without_penetration(self) -> None:
+        layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["random_cube_bucket"]
+        reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]["random_cube_bucket"]
+        table_top = 1.0
+        cube_half_extent = 0.045 / 2
+        bucket_outer_radius = 0.120
+        bucket_mesh_bottom = 0.000047
+        bucket_collision_height = 0.10
+
+        self.assertLessEqual(layout["bucket"][1], 0.407)
+        self.assertGreaterEqual(layout["bucket"][2] + bucket_mesh_bottom - table_top, 0.004)
+
+        object_y_far_edge = layout["object"][1] + reset_ranges["y"][1] + cube_half_extent
+        bucket_visual_near_edge = layout["bucket"][1] - bucket_outer_radius
+        self.assertGreaterEqual(bucket_visual_near_edge - object_y_far_edge, 0.005)
+
+        for name in (
+            "bucket_collision_left",
+            "bucket_collision_right",
+            "bucket_collision_near",
+            "bucket_collision_far",
+        ):
+            collision_bottom = layout[name][2] - bucket_collision_height / 2
+            self.assertGreaterEqual(collision_bottom - table_top, 0.004)
 
     def test_random_cube_bucket_uses_bucket_asset(self) -> None:
         bucket_dir = (

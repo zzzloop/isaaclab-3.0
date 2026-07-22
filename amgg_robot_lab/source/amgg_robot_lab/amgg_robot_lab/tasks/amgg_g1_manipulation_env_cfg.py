@@ -319,10 +319,10 @@ class AmggG1RandomCubeBucketSceneCfg(AmggG1BaseSceneCfg):
         ),
     )
     bucket_collision_left = _collision_box(
-        "{ENV_REGEX_NS}/BucketCollisionLeft", _BUCKET_LAYOUT["bucket_collision_left"], (0.018, 0.120, 0.10)
+        "{ENV_REGEX_NS}/BucketCollisionLeft", _BUCKET_LAYOUT["bucket_collision_left"], (0.018, 0.086, 0.10)
     )
     bucket_collision_right = _collision_box(
-        "{ENV_REGEX_NS}/BucketCollisionRight", _BUCKET_LAYOUT["bucket_collision_right"], (0.018, 0.120, 0.10)
+        "{ENV_REGEX_NS}/BucketCollisionRight", _BUCKET_LAYOUT["bucket_collision_right"], (0.018, 0.086, 0.10)
     )
     bucket_collision_near = _collision_box(
         "{ENV_REGEX_NS}/BucketCollisionNear", _BUCKET_LAYOUT["bucket_collision_near"], (0.160, 0.018, 0.10)
