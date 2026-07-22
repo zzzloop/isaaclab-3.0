@@ -15,6 +15,10 @@ from collections.abc import MutableMapping, Sequence
 from dataclasses import dataclass
 from io import StringIO
 
+_AMGG_DEFAULT_PREFERRED_GPU = 1
+_AMGG_DEFAULT_ALLOWED_GPUS = "0,1,2"
+_AMGG_DISALLOWED_GPUS = frozenset({3})
+
 
 @dataclass(frozen=True)
 class _GpuInfo:
@@ -43,6 +47,9 @@ def _parse_physical_indices(value: str) -> list[int]:
         raise ValueError("AMGG_ALLOWED_GPUS must contain at least one physical GPU index.")
     if len(indices) != len(set(indices)):
         raise ValueError("AMGG_ALLOWED_GPUS must not contain duplicate physical GPU indices.")
+    blocked = sorted(index for index in indices if index in _AMGG_DISALLOWED_GPUS)
+    if blocked:
+        raise ValueError(f"AMGG_ALLOWED_GPUS must not include blocked physical GPUs {blocked}.")
     return indices
 
 
@@ -68,18 +75,34 @@ def _query_gpu_inventory() -> list[_GpuInfo]:
     return inventory
 
 
+def _get_optional_physical_index(name: str, environment: MutableMapping[str, str]) -> int | None:
+    value = environment.get(name)
+    if value is None or value == "":
+        return None
+    index = int(value)
+    if index in _AMGG_DISALLOWED_GPUS:
+        raise ValueError(f"{name}={index} is blocked for AMGG runs.")
+    return index
+
+
 def configure_preferred_gpu(
     arguments: list[str] | None = None,
     environment: MutableMapping[str, str] | None = None,
     inventory: Sequence[_GpuInfo] | None = None,
 ) -> int | None:
-    """Map the preferred physical GPU to matching CUDA, Kit, and CloudXR indices.
+    """Map the preferred physical GPU to the Isaac Lab simulation device.
 
-    The AMGG defaults use physical GPU 1. All GPUs remain visible because
+    The AMGG defaults prefer physical GPU 1 and allow fallback only to physical
+    GPUs 0 or 2.  Physical GPU 3 is blocked.  All GPUs remain visible because
     Isaac Sim RTX/Vulkan device discovery can fail when ``CUDA_VISIBLE_DEVICES``
     hides GPUs from CUDA while Omniverse still enumerates them for graphics.
-    Passing ``--device`` opts out so an explicit operator choice and environment
-    are preserved.
+    Passing ``--device`` opts out so an explicit operator choice is preserved.
+
+    Kit/RTX presentation is not forced by default.  On the AMGG server, physical
+    GPU 1 is suitable for simulation compute but may not be attached to the
+    Xorg display.  Forcing Kit to that GPU can make swapchain creation fail.
+    Set ``AMGG_KIT_GPU_INDEX`` only when you intentionally want to bind Kit to a
+    known-presentable physical GPU.
 
     When the preferred physical GPU is not present in the queried inventory,
     the function falls back only to another explicitly allowed GPU.  If no
@@ -102,8 +125,11 @@ def configure_preferred_gpu(
         return None
 
     try:
-        preferred_index = int(environment.get("AMGG_PREFERRED_GPU", "1"))
-        allowed_indices = _parse_physical_indices(environment.get("AMGG_ALLOWED_GPUS", "1"))
+        preferred_index = int(environment.get("AMGG_PREFERRED_GPU", str(_AMGG_DEFAULT_PREFERRED_GPU)))
+        if preferred_index in _AMGG_DISALLOWED_GPUS:
+            raise ValueError(f"AMGG_PREFERRED_GPU={preferred_index} is blocked for AMGG runs.")
+        kit_physical_index = _get_optional_physical_index("AMGG_KIT_GPU_INDEX", environment)
+        allowed_indices = _parse_physical_indices(environment.get("AMGG_ALLOWED_GPUS", _AMGG_DEFAULT_ALLOWED_GPUS))
     except ValueError as error:
         raise SystemExit(f"Invalid AMGG GPU configuration: {error}") from error
     if preferred_index not in allowed_indices:
@@ -132,16 +158,30 @@ def configure_preferred_gpu(
                 flush=True,
             )
         logical_index = next(index for index, gpu in enumerate(ordered_gpus) if gpu.physical_index == selected_physical)
+        kit_logical_index = None
+        if kit_physical_index is not None:
+            if kit_physical_index not in by_physical_index:
+                raise SystemExit(
+                    f"AMGG_KIT_GPU_INDEX={kit_physical_index} is not present in detected physical GPUs "
+                    f"{[gpu.physical_index for gpu in detected]}."
+                )
+            kit_logical_index = next(
+                index for index, gpu in enumerate(ordered_gpus) if gpu.physical_index == kit_physical_index
+            )
         selected = ordered_gpus[logical_index]
         identity = f"UUID={selected.uuid}, PCI={selected.pci_bus_id}"
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
         logical_index = preferred_index
+        kit_logical_index = kit_physical_index
         identity = "UUID/PCI unavailable"
         print(f"[AMGG] Warning: GPU identity probe failed ({error}); using ordinal fallback.", flush=True)
 
     removed_visible_devices = environment.pop("CUDA_VISIBLE_DEVICES", None)
     environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    environment["NV_GPU_INDEX"] = str(logical_index)
+    if kit_logical_index is not None:
+        environment["NV_GPU_INDEX"] = str(kit_logical_index)
+    else:
+        environment.pop("NV_GPU_INDEX", None)
     arguments.extend(["--device", f"cuda:{logical_index}"])
     visibility_note = ""
     if removed_visible_devices is not None:
@@ -149,10 +189,12 @@ def configure_preferred_gpu(
             f" Cleared CUDA_VISIBLE_DEVICES={removed_visible_devices!r} so RTX/Vulkan and CUDA enumerate"
             " the same GPUs."
         )
+    kit_note = "Kit/CloudXR GPU left to Xorg/default presentable device"
+    if kit_logical_index is not None:
+        kit_note = f"Kit/CloudXR forced to logical GPU {kit_logical_index} from physical GPU {kit_physical_index}"
     print(
-        f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
-        f"cuda:{logical_index}, Kit/CloudXR GPU {logical_index}; allowed physical GPUs={allowed_indices}."
-        f"{visibility_note}",
+        f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> cuda:{logical_index}; "
+        f"{kit_note}; allowed physical GPUs={allowed_indices}.{visibility_note}",
         flush=True,
     )
     return logical_index
