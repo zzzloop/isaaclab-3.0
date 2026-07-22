@@ -73,6 +73,20 @@ class TestAmggG1Workspace(unittest.TestCase):
         self.assertIn('AMGG_G1_TASK_LAYOUTS["random_precision_insert"]', scene_source)
         self.assertIn('layout["goal"]', terms_source)
 
+    def test_g1_robot_asset_can_be_overridden_locally(self) -> None:
+        env_source = (
+            self.project_root
+            / "source"
+            / "amgg_robot_lab"
+            / "amgg_robot_lab"
+            / "tasks"
+            / "amgg_g1_manipulation_env_cfg.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("AMGG_G1_USD_PATH", env_source)
+        self.assertIn("AMGG_ISAAC_ASSETS_ROOT", env_source)
+        self.assertIn("_resolve_g1_inspire_usd_path(self.scene.robot.spawn.usd_path)", env_source)
+        self.assertIn("self.actions.pink_ik_cfg.controller.usd_path = self.scene.robot.spawn.usd_path", env_source)
+
     def test_bimanual_spawn_is_separated_from_supports(self) -> None:
         layout = self.workspace["AMGG_G1_TASK_LAYOUTS"]["bimanual_reorient"]
         reset_ranges = self.workspace["AMGG_G1_TASK_OBJECT_RESET_RANGES"]["bimanual_reorient"]

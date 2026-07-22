@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import isaaclab.envs.mdp as base_mdp
@@ -48,6 +49,38 @@ _BUCKET_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_cube_bucket"]
 _BUCKET_URDF_PATH = (
     Path(__file__).resolve().parents[1] / "assets" / "data" / "objects" / "bucket" / "bucket.urdf"
 )
+_G1_INSPIRE_USD_RELATIVE_PATH = Path("Isaac") / "IsaacLab" / "Robots" / "Unitree" / "G1" / "g1_29dof_inspire_hand.usd"
+_G1_INSPIRE_USD_REPO_PATH = (
+    Path(__file__).resolve().parents[1] / "assets" / "data" / "robots" / "unitree_g1" / "g1_29dof_inspire_hand.usd"
+)
+
+
+def _resolve_g1_inspire_usd_path(default_usd_path: str) -> str:
+    """Resolve the G1 Inspire USD locally when an offline asset path is configured."""
+    explicit_path = os.environ.get("AMGG_G1_USD_PATH")
+    if explicit_path:
+        candidate = Path(explicit_path).expanduser()
+        if candidate.is_file():
+            return str(candidate)
+        raise FileNotFoundError(
+            f"AMGG_G1_USD_PATH points to a missing file: {candidate}. "
+            "Unset it or point it at g1_29dof_inspire_hand.usd."
+        )
+
+    assets_root = os.environ.get("AMGG_ISAAC_ASSETS_ROOT")
+    if assets_root:
+        candidate = Path(assets_root).expanduser() / _G1_INSPIRE_USD_RELATIVE_PATH
+        if candidate.is_file():
+            return str(candidate)
+        raise FileNotFoundError(
+            f"AMGG_ISAAC_ASSETS_ROOT does not contain {_G1_INSPIRE_USD_RELATIVE_PATH}: {candidate}. "
+            "Unset it or point it at the local Assets/Isaac/6.0 directory."
+        )
+
+    if _G1_INSPIRE_USD_REPO_PATH.is_file():
+        return str(_G1_INSPIRE_USD_REPO_PATH)
+
+    return default_usd_path
 
 
 def _dynamic_material(color: tuple[float, float, float], mass: float = 0.25) -> dict:
@@ -707,6 +740,8 @@ class AmggG1BaseEnvCfg(PickPlaceG1InspireFTPEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        self.scene.robot.spawn.usd_path = _resolve_g1_inspire_usd_path(self.scene.robot.spawn.usd_path)
+        self.actions.pink_ik_cfg.controller.usd_path = self.scene.robot.spawn.usd_path
         # The task and the robot hands are both visible from this front
         # three-quarter view.  Sensor cameras remain independent of the viewer.
         self.viewer.eye = (1.45, 1.65, 1.55)
