@@ -32,6 +32,11 @@ _register(
     module_name="amgg_g1_manipulation_env_cfg",
 )
 _register(
+    "Isaac-AMGG-G1-RandomClutterTransfer-v0",
+    "AmggG1RandomClutterTransferEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
+_register(
     "Isaac-AMGG-G1-RandomCubeBucket-v0",
     "AmggG1RandomCubeBucketEnvCfg",
     module_name="amgg_g1_manipulation_env_cfg",
@@ -47,8 +52,18 @@ _register(
     module_name="amgg_g1_manipulation_env_cfg",
 )
 _register(
+    "Isaac-AMGG-G1-RandomPrecisionInsert-v0",
+    "AmggG1RandomPrecisionInsertEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
+_register(
     "Isaac-AMGG-G1-ClutterTransfer-XR-v0",
     "AmggG1ClutterTransferXrEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
+_register(
+    "Isaac-AMGG-G1-RandomClutterTransfer-XR-v0",
+    "AmggG1RandomClutterTransferXrEnvCfg",
     module_name="amgg_g1_manipulation_env_cfg",
 )
 _register(
@@ -64,6 +79,11 @@ _register(
 _register(
     "Isaac-AMGG-G1-PrecisionInsert-XR-v0",
     "AmggG1PrecisionInsertXrEnvCfg",
+    module_name="amgg_g1_manipulation_env_cfg",
+)
+_register(
+    "Isaac-AMGG-G1-RandomPrecisionInsert-XR-v0",
+    "AmggG1RandomPrecisionInsertXrEnvCfg",
     module_name="amgg_g1_manipulation_env_cfg",
 )
 

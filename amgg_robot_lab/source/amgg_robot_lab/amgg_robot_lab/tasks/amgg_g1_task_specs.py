@@ -30,6 +30,14 @@ AMGG_G1_TASK_SPECS = (
         max_episode_seconds=45.0,
     ),
     AmggG1TaskSpec(
+        task_id="Isaac-AMGG-G1-RandomClutterTransfer-v0",
+        slug="random_clutter_transfer",
+        instruction="Pick the randomized orange block from clutter and place it stably in the green goal zone.",
+        research_axis="clutter robustness under randomized initial states",
+        success_hold_steps=12,
+        max_episode_seconds=50.0,
+    ),
+    AmggG1TaskSpec(
         task_id="Isaac-AMGG-G1-RandomCubeBucket-v0",
         slug="random_cube_bucket",
         instruction="Pick the randomized orange cube and drop it stably inside the green bucket.",
@@ -52,6 +60,14 @@ AMGG_G1_TASK_SPECS = (
         research_axis="contact-rich precision and tight-tolerance placement",
         success_hold_steps=15,
         max_episode_seconds=50.0,
+    ),
+    AmggG1TaskSpec(
+        task_id="Isaac-AMGG-G1-RandomPrecisionInsert-v0",
+        slug="random_precision_insert",
+        instruction="Pick the randomized yellow key and insert it upright into the narrow purple guide socket.",
+        research_axis="contact-rich precision under randomized initial states",
+        success_hold_steps=15,
+        max_episode_seconds=55.0,
     ),
 )
 
