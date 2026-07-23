@@ -60,23 +60,27 @@ amgg_teleop = _load_teleop_module()
 class TestAmggGpu(unittest.TestCase):
     """Validate stable GPU mapping before Isaac Sim starts."""
 
-    def test_preferred_physical_gpu_is_mapped_without_hiding_devices(self) -> None:
+    def test_default_physical_gpu_zero_is_mapped_without_hiding_devices(self) -> None:
         inventory = [
-            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:B1:00.0"),
-            amgg_gpu._GpuInfo(1, "GPU-one", "00000000:31:00.0"),
-            amgg_gpu._GpuInfo(2, "GPU-two", "00000000:4B:00.0"),
-            amgg_gpu._GpuInfo(3, "GPU-three", "00000000:21:00.0"),
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(1, "GPU-one", "00000000:4B:00.0"),
+            amgg_gpu._GpuInfo(2, "GPU-two", "00000000:B1:00.0"),
+            amgg_gpu._GpuInfo(3, "GPU-three", "00000000:CA:00.0"),
         ]
         arguments = ["amgg_teleop.py", "--xr"]
         environment = {"CUDA_VISIBLE_DEVICES": "0,1,2"}
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
-        self.assertEqual(logical_index, 2)
+        self.assertEqual(logical_index, 0)
         self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
         self.assertEqual(environment["CUDA_DEVICE_ORDER"], "PCI_BUS_ID")
-        self.assertEqual(environment["NV_GPU_INDEX"], "2")
-        self.assertEqual(arguments[-2:], ["--device", "cuda:2"])
+        self.assertEqual(environment["NV_GPU_INDEX"], "0")
+        self.assertEqual(environment["AMGG_SELECTED_CUDA_PHYSICAL_GPU"], "0")
+        self.assertEqual(environment["AMGG_SELECTED_KIT_PHYSICAL_GPU"], "0")
+        self.assertEqual(environment["AMGG_SELECTED_CLOUDXR_PHYSICAL_GPU"], "0")
+        self.assertEqual(environment["AMGG_SELECTED_CUDA_LOGICAL_INDEX"], "0")
+        self.assertEqual(arguments[-2:], ["--device", "cuda:0"])
 
     def test_explicit_device_preserves_environment(self) -> None:
         arguments = ["amgg_teleop.py", "--device", "cuda:1"]
@@ -88,6 +92,13 @@ class TestAmggGpu(unittest.TestCase):
         self.assertEqual(environment, {"CUDA_VISIBLE_DEVICES": "1"})
         self.assertEqual(arguments, ["amgg_teleop.py", "--device", "cuda:1"])
 
+    def test_explicit_device_rejects_display_gpu(self) -> None:
+        arguments = ["amgg_teleop.py", "--device", "cuda:2"]
+        environment = {}
+
+        with self.assertRaises(SystemExit):
+            amgg_gpu.configure_preferred_gpu(arguments, environment, inventory=[])
+
     def test_physical_gpu_override(self) -> None:
         inventory = [
             amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
@@ -95,7 +106,7 @@ class TestAmggGpu(unittest.TestCase):
             amgg_gpu._GpuInfo(2, "GPU-two", "00000000:B1:00.0"),
         ]
         arguments = ["amgg_smoke_test.py"]
-        environment = {"AMGG_PREFERRED_GPU": "1", "AMGG_ALLOWED_GPUS": "0,1,2"}
+        environment = {"AMGG_PREFERRED_GPU": "1", "AMGG_ALLOWED_GPUS": "0,1"}
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
@@ -103,10 +114,7 @@ class TestAmggGpu(unittest.TestCase):
         self.assertEqual(environment["NV_GPU_INDEX"], "1")
         self.assertEqual(arguments[-1], "cuda:1")
 
-    def test_preferred_physical_gpu_falls_back_to_first_allowed(self) -> None:
-        # Single-GPU machine: preferred physical 2 is absent, allowed 1/2 are
-        # absent. Should fall back to physical 0 (the only present GPU) instead
-        # of aborting.
+    def test_default_physical_gpu_zero_supports_single_gpu_hosts(self) -> None:
         inventory = [amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:01:00.0")]
         arguments = ["amgg_record_demos.py", "--xr"]
         environment = {}
@@ -119,19 +127,87 @@ class TestAmggGpu(unittest.TestCase):
         self.assertNotIn("CUDA_VISIBLE_DEVICES", environment)
 
     def test_preferred_physical_gpu_falls_back_to_next_allowed(self) -> None:
-        # Preferred physical 2 is absent, but allowed physical 0 and 1 are
-        # present. Should fall back to physical 0 (first allowed candidate).
+        # Preferred physical 1 is absent, but allowed physical 0 is present.
+        # Should fall back to physical 0 instead of touching display GPU2.
         inventory = [
             amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
-            amgg_gpu._GpuInfo(1, "GPU-one", "00000000:4B:00.0"),
+            amgg_gpu._GpuInfo(2, "GPU-two", "00000000:B1:00.0"),
         ]
         arguments = ["amgg_record_demos.py", "--xr"]
-        environment = {"AMGG_PREFERRED_GPU": "2", "AMGG_ALLOWED_GPUS": "0,1,2"}
+        environment = {"AMGG_PREFERRED_GPU": "1", "AMGG_ALLOWED_GPUS": "0,1"}
 
         logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
 
         self.assertEqual(logical_index, 0)
         self.assertEqual(environment["NV_GPU_INDEX"], "0")
+
+    def test_display_gpu_two_requires_explicit_override(self) -> None:
+        inventory = [
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(2, "GPU-two", "00000000:B1:00.0"),
+        ]
+        for environment in (
+            {"AMGG_ALLOWED_GPUS": "0,1,2"},
+            {"AMGG_PREFERRED_GPU": "2", "AMGG_ALLOWED_GPUS": "0,1,2"},
+            {"AMGG_KIT_GPU_INDEX": "2", "AMGG_ALLOWED_GPUS": "0,1,2"},
+            {"AMGG_CLOUDXR_GPU_INDEX": "2", "AMGG_ALLOWED_GPUS": "0,1,2"},
+        ):
+            with self.subTest(environment=environment):
+                arguments = ["amgg_record_demos.py", "--xr"]
+                with self.assertRaises(SystemExit):
+                    amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+                self.assertNotIn("--device", arguments)
+
+    def test_display_gpu_two_can_be_allowed_explicitly(self) -> None:
+        inventory = [
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(2, "GPU-two", "00000000:B1:00.0"),
+        ]
+        arguments = ["amgg_record_demos.py", "--xr"]
+        environment = {
+            "AMGG_ALLOW_DISPLAY_GPU": "1",
+            "AMGG_ALLOWED_GPUS": "0,1,2",
+            "AMGG_PREFERRED_GPU": "2",
+        }
+
+        logical_index = amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+
+        self.assertEqual(logical_index, 1)
+        self.assertEqual(environment["NV_GPU_INDEX"], "2")
+        self.assertEqual(environment["AMGG_SELECTED_CUDA_PHYSICAL_GPU"], "2")
+        self.assertEqual(arguments[-1], "cuda:1")
+
+    def test_gpu_three_is_blocked_even_when_requested(self) -> None:
+        inventory = [
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(3, "GPU-three", "00000000:CA:00.0"),
+        ]
+        for environment in (
+            {"AMGG_ALLOWED_GPUS": "0,1,3"},
+            {"AMGG_PREFERRED_GPU": "3", "AMGG_ALLOWED_GPUS": "0,1"},
+            {"AMGG_KIT_GPU_INDEX": "3", "AMGG_ALLOWED_GPUS": "0,1"},
+            {"AMGG_CLOUDXR_GPU_INDEX": "3", "AMGG_ALLOWED_GPUS": "0,1"},
+        ):
+            with self.subTest(environment=environment):
+                arguments = ["amgg_record_demos.py", "--xr"]
+                with self.assertRaises(SystemExit):
+                    amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+                self.assertNotIn("--device", arguments)
+
+    def test_split_compute_kit_cloudxr_gpu_is_rejected(self) -> None:
+        inventory = [
+            amgg_gpu._GpuInfo(0, "GPU-zero", "00000000:31:00.0"),
+            amgg_gpu._GpuInfo(1, "GPU-one", "00000000:4B:00.0"),
+        ]
+        for environment in (
+            {"AMGG_PREFERRED_GPU": "0", "AMGG_KIT_GPU_INDEX": "1", "AMGG_ALLOWED_GPUS": "0,1"},
+            {"AMGG_PREFERRED_GPU": "0", "AMGG_CLOUDXR_GPU_INDEX": "1", "AMGG_ALLOWED_GPUS": "0,1"},
+        ):
+            with self.subTest(environment=environment):
+                arguments = ["amgg_record_demos.py", "--xr"]
+                with self.assertRaises(SystemExit):
+                    amgg_gpu.configure_preferred_gpu(arguments, environment, inventory)
+                self.assertNotIn("--device", arguments)
 
     def test_recorder_limits_xr_kit_to_single_gpu(self) -> None:
         original_argv = sys.argv[:]
