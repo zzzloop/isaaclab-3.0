@@ -10,9 +10,13 @@ import sys
 import unittest
 from pathlib import Path
 
+_AMGG_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+if str(_AMGG_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_AMGG_SCRIPTS_DIR))
+
 
 def _load_gpu_module():
-    module_path = Path(__file__).resolve().parents[1] / "scripts" / "amgg_gpu.py"
+    module_path = _AMGG_SCRIPTS_DIR / "amgg_gpu.py"
     spec = importlib.util.spec_from_file_location("amgg_gpu", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load {module_path}")
@@ -26,7 +30,7 @@ amgg_gpu = _load_gpu_module()
 
 
 def _load_record_module():
-    module_path = Path(__file__).resolve().parents[1] / "scripts" / "amgg_record_demos.py"
+    module_path = _AMGG_SCRIPTS_DIR / "amgg_record_demos.py"
     spec = importlib.util.spec_from_file_location("amgg_record_demos", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load {module_path}")
@@ -37,6 +41,20 @@ def _load_record_module():
 
 
 amgg_record_demos = _load_record_module()
+
+
+def _load_teleop_module():
+    module_path = _AMGG_SCRIPTS_DIR / "amgg_teleop.py"
+    spec = importlib.util.spec_from_file_location("amgg_teleop", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+amgg_teleop = _load_teleop_module()
 
 
 class TestAmggGpu(unittest.TestCase):
@@ -120,12 +138,13 @@ class TestAmggGpu(unittest.TestCase):
         try:
             sys.argv = ["amgg_record_demos.py", "--xr", "--kit_args", "--/app/window/width=1280"]
 
-            amgg_record_demos._merge_kit_args(amgg_record_demos._AMGG_RECORDING_KIT_ARGS)
+            amgg_record_demos.merge_kit_args(amgg_record_demos.AMGG_XR_KIT_ARGS)
 
             self.assertTrue(sys.argv[3].startswith("--/app/window/width=1280 "))
             self.assertIn("--/renderer/multiGpu/enabled=false", sys.argv[3])
             self.assertIn("--/renderer/multiGpu/autoEnable=false", sys.argv[3])
             self.assertIn("--/renderer/multiGpu/maxGpuCount=1", sys.argv[3])
+            self.assertIn("--/exts/omni.kit.renderer.core/present/enabled=false", sys.argv[3])
             self.assertIn("--/app/updateOrder/checkForHydraRenderComplete=1000", sys.argv[3])
             self.assertIn("--/app/renderer/waitIdle=true", sys.argv[3])
             self.assertIn("--/app/hydraEngine/waitIdle=true", sys.argv[3])
@@ -140,13 +159,27 @@ class TestAmggGpu(unittest.TestCase):
         try:
             sys.argv = ["amgg_record_demos.py", "--xr"]
 
-            amgg_record_demos._merge_kit_args(amgg_record_demos._AMGG_RECORDING_KIT_ARGS)
+            amgg_record_demos.merge_kit_args(amgg_record_demos.AMGG_XR_KIT_ARGS)
 
             self.assertEqual(sys.argv[-2], "--kit_args")
             self.assertEqual(
                 sys.argv[-1],
-                " ".join(amgg_record_demos._AMGG_RECORDING_KIT_ARGS),
+                " ".join(amgg_record_demos.AMGG_XR_KIT_ARGS),
             )
+        finally:
+            sys.argv = original_argv
+
+    def test_teleop_adds_xr_kit_args_when_missing(self) -> None:
+        original_argv = sys.argv[:]
+        try:
+            sys.argv = ["amgg_teleop.py", "--xr"]
+
+            amgg_teleop.merge_kit_args(amgg_teleop.AMGG_XR_KIT_ARGS)
+
+            self.assertEqual(sys.argv[-2], "--kit_args")
+            self.assertIn("--/renderer/multiGpu/enabled=false", sys.argv[-1])
+            self.assertIn("--/exts/omni.kit.renderer.core/present/enabled=false", sys.argv[-1])
+            self.assertIn("--/app/asyncRendering=false", sys.argv[-1])
         finally:
             sys.argv = original_argv
 

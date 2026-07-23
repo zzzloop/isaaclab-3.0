@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from amgg_gpu import configure_preferred_gpu
+from amgg_kit_args import AMGG_XR_KIT_ARGS, merge_kit_args
 
 _AMGG_REGISTRATION_CALLBACK = "amgg_robot_lab.tasks.register_tasks"
 
@@ -27,6 +28,8 @@ def _inject_registration_callback() -> None:
 def main() -> None:
     """Run the official teleop entry point after custom task registration."""
     configure_preferred_gpu()
+    merge_kit_args(AMGG_XR_KIT_ARGS)
+    print(f"[AMGG] XR teleop Kit args: {' '.join(AMGG_XR_KIT_ARGS)}", flush=True)
     _inject_registration_callback()
     script = Path(__file__).resolve().parents[2] / "scripts" / "environments" / "teleoperation" / "teleop_se3_agent.py"
     runpy.run_path(str(script), run_name="__main__")
