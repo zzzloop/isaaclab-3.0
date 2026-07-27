@@ -9,7 +9,8 @@ import importlib.util
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 _AMGG_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -75,6 +76,33 @@ class TestAmggCloudxr(unittest.TestCase):
 
             self.assertFalse(removed)
             self.assertTrue(ipc_path.exists())
+
+    def test_terminates_stale_runtime_process_for_xr_autolaunch(self) -> None:
+        fake_run_result = SimpleNamespace(stdout="123\n456\n")
+        fake_kill = MagicMock()
+
+        with (
+            patch.object(amgg_cloudxr.os, "name", "posix"),
+            patch.object(amgg_cloudxr.os, "getuid", return_value=1000, create=True),
+            patch.object(amgg_cloudxr.os, "getpid", return_value=999),
+            patch.object(amgg_cloudxr.os, "getppid", return_value=456),
+            patch.object(amgg_cloudxr.subprocess, "run", return_value=fake_run_result),
+            patch.object(amgg_cloudxr.os, "kill", fake_kill),
+            patch.object(amgg_cloudxr.time, "monotonic", side_effect=[0.0, 4.0]),
+        ):
+            pids = amgg_cloudxr.cleanup_stale_cloudxr_runtime(["amgg_record_demos.py", "--xr"], {})
+
+        self.assertEqual(pids, [123])
+        fake_kill.assert_any_call(123, amgg_cloudxr.signal.SIGTERM)
+
+    def test_skips_runtime_cleanup_when_disabled(self) -> None:
+        with patch.object(amgg_cloudxr.subprocess, "run") as fake_run:
+            pids = amgg_cloudxr.cleanup_stale_cloudxr_runtime(
+                ["amgg_record_demos.py", "--xr"], {"AMGG_CLOUDXR_KILL_STALE": "0"}
+            )
+
+        self.assertEqual(pids, [])
+        fake_run.assert_not_called()
 
 
 if __name__ == "__main__":
