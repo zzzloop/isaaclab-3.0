@@ -9,7 +9,6 @@ import runpy
 import sys
 from pathlib import Path
 
-from amgg_cloudxr import cleanup_stale_cloudxr_ipc, cleanup_stale_cloudxr_runtime
 from amgg_gpu import configure_preferred_gpu
 
 _AMGG_REGISTRATION_CALLBACK = "amgg_robot_lab.tasks.register_tasks"
@@ -102,8 +101,6 @@ def _inject_registration_callback() -> None:
 
 def main() -> None:
     """Run the official success-gated HDF5 recording entry point."""
-    cleanup_stale_cloudxr_runtime()
-    cleanup_stale_cloudxr_ipc()
     configure_preferred_gpu()
     _merge_kit_args(_AMGG_RECORDING_KIT_ARGS)
     print(f"[AMGG] XR recording Kit args: {' '.join(_AMGG_RECORDING_KIT_ARGS)}", flush=True)
