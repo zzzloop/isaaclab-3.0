@@ -9,6 +9,7 @@ import runpy
 import sys
 from pathlib import Path
 
+from amgg_cloudxr import cleanup_stale_cloudxr_ipc
 from amgg_gpu import configure_preferred_gpu
 
 _AMGG_REGISTRATION_CALLBACK = "amgg_robot_lab.tasks.register_tasks"
@@ -26,6 +27,7 @@ def _inject_registration_callback() -> None:
 
 def main() -> None:
     """Run the official teleop entry point after custom task registration."""
+    cleanup_stale_cloudxr_ipc()
     configure_preferred_gpu()
     _inject_registration_callback()
     script = Path(__file__).resolve().parents[2] / "scripts" / "environments" / "teleoperation" / "teleop_se3_agent.py"

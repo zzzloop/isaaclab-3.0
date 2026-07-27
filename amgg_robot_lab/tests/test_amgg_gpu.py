@@ -10,9 +10,13 @@ import sys
 import unittest
 from pathlib import Path
 
+_AMGG_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+if str(_AMGG_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_AMGG_SCRIPTS_DIR))
+
 
 def _load_gpu_module():
-    module_path = Path(__file__).resolve().parents[1] / "scripts" / "amgg_gpu.py"
+    module_path = _AMGG_SCRIPTS_DIR / "amgg_gpu.py"
     spec = importlib.util.spec_from_file_location("amgg_gpu", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load {module_path}")
@@ -26,7 +30,7 @@ amgg_gpu = _load_gpu_module()
 
 
 def _load_record_module():
-    module_path = Path(__file__).resolve().parents[1] / "scripts" / "amgg_record_demos.py"
+    module_path = _AMGG_SCRIPTS_DIR / "amgg_record_demos.py"
     spec = importlib.util.spec_from_file_location("amgg_record_demos", module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load {module_path}")
