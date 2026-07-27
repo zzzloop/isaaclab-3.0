@@ -75,11 +75,11 @@ def configure_preferred_gpu(
 ) -> int | None:
     """Map the preferred physical GPU to matching CUDA, Kit, and CloudXR indices.
 
-    The AMGG defaults use physical GPU 2 and keep only the allowed, non-blocked
-    GPUs visible to CUDA. This prevents PyTorch from probing a known bad GPU
-    while preserving the ordinal mapping needed by Kit/CloudXR on AMGG's XR
-    workstation. Passing ``--device`` opts out so an explicit operator choice
-    and environment are preserved.
+    The AMGG defaults use physical GPU 2. All GPUs remain visible because
+    Isaac Sim RTX/Vulkan device discovery can fail when ``CUDA_VISIBLE_DEVICES``
+    hides GPUs from CUDA while Omniverse still enumerates them for graphics.
+    Passing ``--device`` opts out so an explicit operator choice and environment
+    are preserved.
 
     When the preferred physical GPU is not present in the queried inventory,
     the function falls back to the first available allowed GPU, or the lowest
@@ -104,18 +104,8 @@ def configure_preferred_gpu(
     try:
         preferred_index = int(environment.get("AMGG_PREFERRED_GPU", "2"))
         allowed_indices = _parse_physical_indices(environment.get("AMGG_ALLOWED_GPUS", "0,1,2"))
-        blocked_indices = set(_parse_physical_indices(environment.get("AMGG_BLOCKED_GPUS", "3")))
     except ValueError as error:
         raise SystemExit(f"Invalid AMGG GPU configuration: {error}") from error
-    blocked_allowed_indices = sorted(set(allowed_indices) & blocked_indices)
-    if blocked_allowed_indices:
-        raise SystemExit(
-            f"AMGG_ALLOWED_GPUS={allowed_indices} includes blocked physical GPU(s) {blocked_allowed_indices}."
-        )
-    if preferred_index in blocked_indices:
-        raise SystemExit(
-            f"AMGG_PREFERRED_GPU={preferred_index} is blocked by AMGG_BLOCKED_GPUS={sorted(blocked_indices)}."
-        )
     if preferred_index not in allowed_indices:
         raise SystemExit(f"AMGG_PREFERRED_GPU={preferred_index} is not present in AMGG_ALLOWED_GPUS={allowed_indices}.")
 
@@ -123,7 +113,6 @@ def configure_preferred_gpu(
         detected = list(inventory) if inventory is not None else _query_gpu_inventory()
         by_physical_index = {gpu.physical_index: gpu for gpu in detected}
         ordered_gpus = sorted(detected, key=lambda gpu: gpu.pci_sort_key)
-        visible_physical_indices = [index for index in allowed_indices if index in by_physical_index]
         # Prefer the configured physical GPU; fall back to the first allowed
         # physical GPU that is actually present, then to the lowest available
         # physical GPU. This keeps single-GPU and repurposed machines runnable
@@ -148,22 +137,18 @@ def configure_preferred_gpu(
         identity = f"UUID={selected.uuid}, PCI={selected.pci_bus_id}"
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
         logical_index = preferred_index
-        visible_physical_indices = allowed_indices
         identity = "UUID/PCI unavailable"
         print(f"[AMGG] Warning: GPU identity probe failed ({error}); using ordinal fallback.", flush=True)
 
-    previous_visible_devices = environment.get("CUDA_VISIBLE_DEVICES")
-    visible_devices = ",".join(str(index) for index in visible_physical_indices)
-    if visible_devices:
-        environment["CUDA_VISIBLE_DEVICES"] = visible_devices
+    removed_visible_devices = environment.pop("CUDA_VISIBLE_DEVICES", None)
     environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     environment["NV_GPU_INDEX"] = str(logical_index)
     arguments.extend(["--device", f"cuda:{logical_index}"])
     visibility_note = ""
-    if previous_visible_devices != environment.get("CUDA_VISIBLE_DEVICES"):
+    if removed_visible_devices is not None:
         visibility_note = (
-            f" Set CUDA_VISIBLE_DEVICES={environment.get('CUDA_VISIBLE_DEVICES')!r}"
-            f" (was {previous_visible_devices!r}) to keep blocked GPUs {sorted(blocked_indices)} out of PyTorch."
+            f" Cleared CUDA_VISIBLE_DEVICES={removed_visible_devices!r} so RTX/Vulkan and CUDA enumerate"
+            " the same GPUs."
         )
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "
