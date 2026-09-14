@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+build/
+dist/
+*.egg-info/
+datasets/
+outputs/
+
+# URDF importer output inside the packaged asset (regenerated on first spawn).
+source/amgg_robot_lab/amgg_robot_lab/assets/data/**/*.usd
+source/amgg_robot_lab/amgg_robot_lab/assets/data/**/*.usda
+source/amgg_robot_lab/amgg_robot_lab/assets/data/**/*.usdc
+
+# The repository-level ``**/__*`` rule must not hide package initializers in
+# this external extension.
+!**/__init__.py

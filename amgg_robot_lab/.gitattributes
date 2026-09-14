@@ -1,0 +1,6 @@
+# Large AM-DP123 meshes are stored in Git LFS.
+*.STL filter=lfs diff=lfs merge=lfs -text
+
+# ``AM-DP123.urdf`` is a contract constant: an offline test pins its SHA256, so
+# keep it byte-stable on repositories with ``core.autocrlf`` enabled.
+*.urdf text eol=lf

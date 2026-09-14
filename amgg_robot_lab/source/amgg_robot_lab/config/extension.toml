@@ -1,0 +1,17 @@
+[package]
+version = "0.1.0"
+category = "isaaclab"
+readme = "README.md"
+title = "AM-DP123 PICO XR Lab"
+author = "AMGG"
+maintainer = "AMGG"
+description = "AM-DP123 asset, contracts, and PICO XR teleoperation extension for Isaac Lab"
+repository = ""
+keywords = ["am-dp123", "amgg", "isaaclab", "teleoperation", "xr"]
+
+[dependencies]
+"isaaclab" = {}
+"isaaclab_teleop" = {}
+
+[[python.module]]
+name = "amgg_robot_lab"
