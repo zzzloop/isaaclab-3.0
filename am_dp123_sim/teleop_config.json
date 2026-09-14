@@ -1,0 +1,9 @@
+{
+  "position_scale": 1.0,
+  "max_joint_speed": 1.0,
+  "position_tolerance": 0.03,
+  "orientation_tolerance": 0.2,
+  "home": {},
+  "gripper_open": [0.0, 0.0],
+  "gripper_closed": [-0.32, 0.32]
+}
