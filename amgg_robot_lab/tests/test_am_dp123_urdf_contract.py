@@ -11,7 +11,11 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from math import isclose
 
-from amgg_robot_lab.assets import AM_DP123_ASSET_DATA_DIR, AM_DP123_URDF_PATH
+from amgg_robot_lab.assets import (
+    AM_DP123_ASSET_DATA_DIR,
+    AM_DP123_BASE_SPAWN_ORIENTATION_XYZW,
+    AM_DP123_URDF_PATH,
+)
 from amgg_robot_lab.contracts import (
     AM_DP123_FRAMES,
     AM_DP123_HAND_JOINT_NAMES,
@@ -102,3 +106,8 @@ def test_hand_jaws_keep_the_upstream_mimic_coupling():
         assert mimic.get("joint") == jaw_a
         assert isclose(float(mimic.get("multiplier")), -1.0, abs_tol=1e-12)
         assert isclose(float(mimic.get("offset")), 0.0, abs_tol=1e-12)
+
+
+def test_robot_base_uses_identity_xyzw_orientation():
+    """The robot must start upright under the Isaac Lab 3.0 quaternion ABI."""
+    assert AM_DP123_BASE_SPAWN_ORIENTATION_XYZW == (0.0, 0.0, 0.0, 1.0)

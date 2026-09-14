@@ -12,6 +12,7 @@ from math import isclose, isfinite, sqrt
 from amgg_robot_lab.contracts import (
     AM_DP123_ABSOLUTE_IK_ACTION_DIM,
     AM_DP123_HAND_ACTION_SIDE_INDEX,
+    AM_DP123_HAND_ACTION_TRIGGER_INDEX,
     AM_DP123_HAND_JOINT_NAMES,
     AM_DP123_HAND_TRIGGER_OPEN,
     AM_DP123_LEFT_HAND_JOINT_NAMES,
@@ -55,6 +56,14 @@ def test_hand_elements_pair_the_jaws_of_each_hand():
     assert hand_elements[1] == AM_DP123_LEFT_HAND_JOINT_NAMES[1]
     assert hand_elements[2] == AM_DP123_RIGHT_HAND_JOINT_NAMES[0]
     assert hand_elements[3] == AM_DP123_RIGHT_HAND_JOINT_NAMES[1]
+
+
+def test_hand_trigger_indices_keep_left_and_right_independent():
+    """A closed right trigger must never be replaced by the open left trigger."""
+    raw_triggers = (AM_DP123_HAND_TRIGGER_OPEN,) * 2 + (-AM_DP123_HAND_TRIGGER_OPEN,) * 2
+    mapped_triggers = tuple(raw_triggers[index] for index in AM_DP123_HAND_ACTION_TRIGGER_INDEX)
+    assert mapped_triggers[:2] == (AM_DP123_HAND_TRIGGER_OPEN,) * 2
+    assert mapped_triggers[2:] == (-AM_DP123_HAND_TRIGGER_OPEN,) * 2
 
 
 def test_retargeter_offsets_are_finite_degrees():

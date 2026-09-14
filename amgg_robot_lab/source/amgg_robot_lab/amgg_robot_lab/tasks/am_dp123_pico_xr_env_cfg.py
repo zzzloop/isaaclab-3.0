@@ -69,9 +69,9 @@ def _camera(name: str, prim_name: str) -> CameraCfg:
         width=camera.width_px,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(
-            focal_length=camera.focal_length_mm,
+            focal_length=camera.focal_length_mm / 10.0,
             focus_distance=camera.focus_distance_m,
-            horizontal_aperture=camera.horizontal_aperture_mm,
+            horizontal_aperture=camera.horizontal_aperture_mm / 10.0,
             clipping_range=camera.clipping_range_m,
         ),
         offset=CameraCfg.OffsetCfg(pos=camera.translation_m, rot=camera.quaternion_xyzw, convention="ros"),
@@ -223,7 +223,7 @@ class PolicyCfg(ObsGroup):
         params={"sensor_cfg": SceneEntityCfg("right_wrist"), "data_type": "rgb", "normalize": False, "clone": False},
     )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.enable_corruption = False
         self.concatenate_terms = False
 
@@ -281,7 +281,7 @@ class AmDp123PicoXrEnvCfg(ManagerBasedRLEnvCfg):
 
     idle_action = list(AM_DP123_IDLE_ACTION)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.decimation = 4
         self.episode_length_s = 60.0
         self.sim.dt = 1.0 / 120.0
@@ -290,12 +290,16 @@ class AmDp123PicoXrEnvCfg(ManagerBasedRLEnvCfg):
         self.num_rerenders_on_reset = 3
         self.sim.default_visualizer_cfg = VisualizerCfg(eye=(2.0, -1.6, 1.8), lookat=(0.55, 0.0, 0.9))
         self.xr = XrCfg(anchor_pos=(0.0, 0.0, 0.0), anchor_rot=(0.0, 0.0, 0.0, 1.0))
+        pipeline, retargeters = build_am_dp123_pico_pipeline()
         self.isaac_teleop = IsaacTeleopCfg(
-            pipeline_builder=lambda: build_am_dp123_pico_pipeline()[0],
-            retargeters_to_tune=lambda: build_am_dp123_pico_pipeline()[1],
+            pipeline_builder=lambda: pipeline,
+            retargeters_to_tune=lambda: retargeters,
             sim_device=self.sim.device,
             xr_cfg=self.xr,
-            xr_camera_feeds=[XrCameraFeedCfg(camera_name=name) for name in AM_DP123_STEREO_CAMERA_NAMES],
+            xr_camera_feeds=[
+                XrCameraFeedCfg(camera_name=name, label=name.replace("_", " ").title())
+                for name in AM_DP123_STEREO_CAMERA_NAMES
+            ],
             xr_camera_feed_layout=XrCameraFeedLayoutCfg(mode="horizontal", placement="head_locked"),
         )
         self.image_obs_list = list(AM_DP123_STEREO_CAMERA_NAMES)

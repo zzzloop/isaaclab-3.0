@@ -9,9 +9,15 @@ import runpy
 import sys
 from pathlib import Path
 
-from amgg_gpu import configure_preferred_gpu
-
 _AM_DP123_REGISTRATION_CALLBACK = "amgg_robot_lab.tasks.register_tasks"
+_EXTENSION_SOURCE_ROOT = Path(__file__).resolve().parents[1] / "source" / "amgg_robot_lab"
+
+
+def _ensure_extension_importable() -> None:
+    """Prepend the extension source tree for checkout-based launches."""
+    source_root = str(_EXTENSION_SOURCE_ROOT)
+    if source_root not in sys.path:
+        sys.path.insert(0, source_root)
 
 
 def _inject_registration_callback() -> None:
@@ -26,7 +32,7 @@ def _inject_registration_callback() -> None:
 
 def main() -> None:
     """Run the official teleop entry point after custom task registration."""
-    configure_preferred_gpu()
+    _ensure_extension_importable()
     _inject_registration_callback()
     script = Path(__file__).resolve().parents[2] / "scripts" / "environments" / "teleoperation" / "teleop_se3_agent.py"
     runpy.run_path(str(script), run_name="__main__")

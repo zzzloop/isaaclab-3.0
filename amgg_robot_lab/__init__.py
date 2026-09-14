@@ -23,7 +23,6 @@ if not (_SOURCE_PACKAGE_DIR / "__init__.py").is_file():
     raise ImportError(f"AM-DP123 source package was not found at {_SOURCE_PACKAGE_DIR}")
 
 __path__.append(str(_SOURCE_PACKAGE_DIR))
-__version__ = "0.1.0"
 
 try:
     import gymnasium  # noqa: F401

@@ -14,3 +14,10 @@ Added
   Migration: the extension carries AM-DP123 joint, frame, and camera names
   instead of the previous AMGG names; downstream code must import the new
   ``amgg_robot_lab.contracts.am_dp123_*`` contracts.
+
+Fixed
+^^^^^
+
+* Fixed the Isaac Lab 3.0 base quaternion so the AM-DP123 starts upright.
+* Fixed right-hand trigger routing and connected the tuning UI to the live retargeters.
+* Preserved scheduler GPU selection by delegating device choice to the official launcher.

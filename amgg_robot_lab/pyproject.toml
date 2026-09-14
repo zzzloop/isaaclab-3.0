@@ -1,3 +1,48 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+[build-system]
+requires = ["setuptools>=70.0,<82.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amgg_robot_lab"
+version = "0.1.0"
+description = "AM-DP123 PICO XR teleoperation environment for Isaac Lab."
+readme = "source/amgg_robot_lab/README.md"
+license = "BSD-3-Clause"
+authors = [{ name = "AMGG" }]
+maintainers = [{ name = "AMGG" }]
+keywords = ["am-dp123", "isaaclab", "pico", "teleoperation", "xr"]
+requires-python = ">=3.12,<3.13"
+dependencies = ["isaaclab", "isaaclab_teleop"]
+
+[project.entry-points."isaaclab.tasks"]
+amgg_robot_lab = "amgg_robot_lab.tasks"
+
+[tool.uv.sources]
+isaaclab = { path = "../source/isaaclab", editable = true }
+isaaclab_teleop = { path = "../source/isaaclab_teleop", editable = true }
+
+[dependency-groups]
+dev = ["numpy>=2", "pytest>=8.3", "ruff>=0.11"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["source/amgg_robot_lab"]
+include = ["amgg_robot_lab", "amgg_robot_lab.*"]
+
+[tool.setuptools.package-data]
+amgg_robot_lab = [
+    "assets/data/AM-DP123/*.md",
+    "assets/data/AM-DP123/meshes/*.STL",
+    "assets/data/AM-DP123/urdf/*.urdf",
+]
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"

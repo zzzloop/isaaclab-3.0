@@ -20,7 +20,18 @@ from .am_dp123_kinematics_model import AmDp123KinematicsError
 
 @dataclass(frozen=True, slots=True)
 class UrdfJoint:
-    """Kinematic information for one URDF joint."""
+    """Kinematic information for one URDF joint.
+
+    Attributes:
+        name: Joint name from the URDF.
+        joint_type: URDF joint type.
+        parent: Parent link name.
+        child: Child link name.
+        origin: Parent-to-joint homogeneous transform; translation [m].
+        axis: Unit motion axis in the joint frame.
+        lower: Lower limit [m or rad, depending on joint type].
+        upper: Upper limit [m or rad, depending on joint type].
+    """
 
     name: str
     joint_type: str
@@ -34,7 +45,14 @@ class UrdfJoint:
 
 @dataclass(frozen=True, slots=True)
 class IkTarget:
-    """One Cartesian target used by the multi-end-effector solver."""
+    """One Cartesian target used by the multi-end-effector solver.
+
+    Attributes:
+        link_name: Name of the target link.
+        transform: Root-to-target homogeneous transform; translation [m].
+        position_weight: Weight applied to translational error.
+        orientation_weight: Weight applied to rotational error.
+    """
 
     link_name: str
     transform: np.ndarray
@@ -44,7 +62,15 @@ class IkTarget:
 
 @dataclass(frozen=True, slots=True)
 class IkResult:
-    """Result and diagnostics from an iterative IK solve."""
+    """Result and diagnostics from an iterative IK solve.
+
+    Attributes:
+        joint_positions: Solved positions [m or rad, depending on joint type].
+        converged: Whether the requested tolerances were reached.
+        iterations: Number of solver iterations performed.
+        position_error_m: Maximum target position error [m].
+        orientation_error_rad: Maximum target orientation error [rad].
+    """
 
     joint_positions: dict[str, float]
     converged: bool
@@ -119,7 +145,7 @@ def _rotation_log(rotation: np.ndarray) -> np.ndarray:
 class AmDp123UrdfKinematics:
     """URDF tree model supporting offline validation and hardware-side IK."""
 
-    def __init__(self, urdf_path: str | Path):
+    def __init__(self, urdf_path: str | Path) -> None:
         """Parse a URDF model.
 
         Args:
@@ -177,7 +203,17 @@ class AmDp123UrdfKinematics:
         )
 
     def chain(self, tip_link: str) -> tuple[UrdfJoint, ...]:
-        """Return the root-to-tip joint chain of a link."""
+        """Return the root-to-tip joint chain of a link.
+
+        Args:
+            tip_link: Name of the terminal link.
+
+        Returns:
+            Ordered joints from the URDF root to :paramref:`tip_link`.
+
+        Raises:
+            AmDp123KinematicsError: If :paramref:`tip_link` is unknown.
+        """
         if tip_link not in self.link_names:
             raise AmDp123KinematicsError(f"Unknown URDF link: {tip_link}")
         chain: list[UrdfJoint] = []
@@ -201,13 +237,31 @@ class AmDp123UrdfKinematics:
         return transform, joint_frames
 
     def forward(self, tip_link: str, joint_positions: Mapping[str, float]) -> np.ndarray:
-        """Compute a root-to-link homogeneous transform."""
+        """Compute a root-to-link homogeneous transform.
+
+        Args:
+            tip_link: Name of the terminal link.
+            joint_positions: Joint positions [m or rad, depending on joint type].
+
+        Returns:
+            Root-to-link homogeneous transform; translation [m].
+        """
         return self._evaluate_chain(tip_link, joint_positions)[0]
 
     def geometric_jacobian(
         self, tip_link: str, joint_names: Sequence[str], joint_positions: Mapping[str, float]
     ) -> np.ndarray:
-        """Compute a root-frame spatial geometric Jacobian."""
+        """Compute a root-frame spatial geometric Jacobian.
+
+        Args:
+            tip_link: Name of the terminal link.
+            joint_names: Ordered joints defining the Jacobian columns.
+            joint_positions: Joint positions [m or rad, depending on joint type].
+
+        Returns:
+            Spatial Jacobian whose translational rows are [m/m or m/rad] and
+            rotational rows are [rad/m or rad/rad], depending on joint type.
+        """
         tip_transform, joint_frames = self._evaluate_chain(tip_link, joint_positions)
         tip_position = tip_transform[:3, 3]
         jacobian = np.zeros((6, len(joint_names)))
@@ -239,7 +293,25 @@ class AmDp123UrdfKinematics:
         position_tolerance_m: float = 1e-4,
         orientation_tolerance_rad: float = 2e-3,
     ) -> IkResult:
-        """Solve simultaneous Cartesian targets with joint-limit projection."""
+        """Solve simultaneous Cartesian targets with joint-limit projection.
+
+        Args:
+            targets: Cartesian link targets; translations [m].
+            joint_names: Ordered joints to solve.
+            seed: Initial positions [m or rad, depending on joint type].
+            max_iterations: Maximum solver iterations.
+            damping: Damped least-squares regularization factor.
+            max_step_rad: Per-iteration revolute-joint step limit [rad].
+            position_tolerance_m: Required position accuracy [m].
+            orientation_tolerance_rad: Required orientation accuracy [rad].
+
+        Returns:
+            Joint solution and convergence diagnostics.
+
+        Raises:
+            AmDp123KinematicsError: If the request has no target or contains
+                duplicate or unknown joints or a malformed transform.
+        """
         if not targets:
             raise AmDp123KinematicsError("IK requires at least one target.")
         names = tuple(joint_names)
@@ -290,7 +362,17 @@ class AmDp123UrdfKinematics:
 
 
 def quaternion_xyzw_to_matrix(quaternion: Sequence[float]) -> np.ndarray:
-    """Convert an XYZW quaternion into a rotation matrix."""
+    """Convert an XYZW quaternion into a rotation matrix.
+
+    Args:
+        quaternion: Quaternion ordered ``(x, y, z, w)``.
+
+    Returns:
+        Normalized 3-by-3 rotation matrix.
+
+    Raises:
+        AmDp123KinematicsError: If the quaternion norm is zero.
+    """
     x, y, z, w = np.asarray(quaternion, dtype=np.float64)
     norm = np.linalg.norm((x, y, z, w))
     if norm < 1e-12:
@@ -306,7 +388,14 @@ def quaternion_xyzw_to_matrix(quaternion: Sequence[float]) -> np.ndarray:
 
 
 def matrix_to_quaternion_xyzw(rotation: np.ndarray) -> tuple[float, float, float, float]:
-    """Convert a rotation matrix into a normalized XYZW quaternion."""
+    """Convert a rotation matrix into a normalized XYZW quaternion.
+
+    Args:
+        rotation: Three-dimensional rotation matrix.
+
+    Returns:
+        Unit quaternion ordered ``(x, y, z, w)``.
+    """
     matrix = np.asarray(rotation, dtype=np.float64)
     trace = np.trace(matrix)
     if trace > 0:

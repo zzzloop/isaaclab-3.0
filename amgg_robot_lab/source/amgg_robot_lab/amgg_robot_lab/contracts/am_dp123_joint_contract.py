@@ -150,11 +150,14 @@ AM_DP123_JOINT_POSITION_ACTION_DIM = len(AM_DP123_CONTROLLED_JOINT_NAMES)
 AM_DP123_STATE_DIM = len(AM_DP123_STATE_JOINT_NAMES)
 
 AM_DP123_HAND_ACTION_SIDE_INDEX: tuple[int, int, int, int] = (0, 0, 1, 1)
-"""PICO hand action entry -> hand side index (``0`` left, ``1`` right).
+"""PICO hand action entry -> hand side index (``0`` left, ``1`` right)."""
 
-IsaacTeleop's ``GripperRetargeter`` emits one scalar per hand and the retargeting
-pipeline duplicates it for both jaws, so entries 0/1 (left hand) and 2/3 (right
-hand) always carry the same trigger value.
+AM_DP123_HAND_ACTION_TRIGGER_INDEX: tuple[int, int, int, int] = (0, 0, 2, 2)
+"""PICO hand joint entry -> source trigger index inside the four-entry hand action.
+
+IsaacTeleop emits ``[left, left, right, right]``. Selecting indices 0 and 2
+keeps the two hands independent while making each jaw pair robust to an
+unexpected mismatch between duplicated values.
 """
 
 AM_DP123_HAND_TRIGGER_OPEN = 1.0
@@ -235,7 +238,10 @@ def require_am_dp123_joint_contract() -> None:
     if len(AM_DP123_IK_JOINT_NAMES) != 14:
         raise ValueError("AM-DP123 Pink IK must control the 14 arm joints.")
     side_index = AM_DP123_HAND_ACTION_SIDE_INDEX
-    if len(side_index) != len(AM_DP123_HAND_JOINT_NAMES):
+    trigger_index = AM_DP123_HAND_ACTION_TRIGGER_INDEX
+    if len(side_index) != len(AM_DP123_HAND_JOINT_NAMES) or len(trigger_index) != len(side_index):
         raise ValueError("AM-DP123 hand action layout must hold one entry per hand joint.")
     if list(side_index) != sorted(side_index) or set(side_index) != {0, 1}:
         raise ValueError("AM-DP123 hand action layout must pair the two jaws of each hand.")
+    if trigger_index != (0, 0, 2, 2):
+        raise ValueError("AM-DP123 hand trigger indices must preserve independent left and right inputs.")

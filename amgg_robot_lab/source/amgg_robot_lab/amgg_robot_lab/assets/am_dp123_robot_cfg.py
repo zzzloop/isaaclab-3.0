@@ -28,6 +28,8 @@ AM_DP123_ROS_PACKAGE_NAME = "AM-DP123"
 # is z = -0.07289 m (rear-right steer link), so a welded base spawned at this
 # height rests the wheels and steer links exactly on the ground plane.
 AM_DP123_BASE_SPAWN_HEIGHT_M = 0.0729
+AM_DP123_BASE_SPAWN_ORIENTATION_XYZW = (0.0, 0.0, 0.0, 1.0)
+"""Identity base orientation in Isaac Lab's ``xyzw`` quaternion order."""
 
 
 def get_am_dp123_robot_cfg() -> ArticulationCfg:
@@ -68,7 +70,7 @@ def get_am_dp123_robot_cfg() -> ArticulationCfg:
         ),
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.0, 0.0, AM_DP123_BASE_SPAWN_HEIGHT_M),
-            rot=(1.0, 0.0, 0.0, 0.0),
+            rot=AM_DP123_BASE_SPAWN_ORIENTATION_XYZW,
             joint_pos={**{".*": 0.0}, **AM_DP123_HOME_POSITIONS},
             joint_vel={".*": 0.0},
         ),

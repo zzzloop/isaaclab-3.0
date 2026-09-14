@@ -1,6 +1,6 @@
-# AM-DP123 PICO XR 遥操作扩展（Isaac Lab 外部扩展）
+# AM-DP123 PICO XR 遥操作包（Isaac Lab 外部项目）
 
-本目录是 `amgg_robot_lab` 外部扩展的中文文档。扩展把 AM-DP123 移动双臂机器人接入
+本目录是 `amgg_robot_lab` 外部项目的中文文档。项目把 AM-DP123 移动双臂机器人接入
 Isaac Lab 官方 `isaaclab_teleop` 遥操作管线，用于 PICO 手柄 + CloudXR 的真机对齐与
 遥操作验证。
 
@@ -19,12 +19,10 @@ Isaac Lab 官方 `isaaclab_teleop` 遥操作管线，用于 PICO 手柄 + CloudX
 ```
 amgg_robot_lab/
 ├── .gitattributes                  # *.STL 走 Git LFS
-├── pyproject.toml                  # ruff / pytest 配置（离线检查）
+├── pyproject.toml                  # 包构建、依赖与离线检查配置
 ├── scripts/
-│   ├── amgg_teleop.py              # 注入 --external_callback 后调用官方遥操作脚本
-│   └── amgg_gpu.py                 # CUDA_VISIBLE_DEVICES 选择
+│   └── amgg_teleop.py              # 注入 --external_callback 后调用官方遥操作脚本
 ├── source/amgg_robot_lab/
-│   ├── config/extension.toml       # 扩展元数据（依赖 isaaclab / isaaclab_teleop）
 │   ├── changelog.d/                # 变更片段
 │   ├── README.md / README_CN.md    # 英文 / 中文文档
 │   └── amgg_robot_lab/
@@ -59,16 +57,17 @@ uv run --no-project --with ruff ruff format --check .
 
 ```bash
 # 无头冒烟：只验证资产/场景/动作项能构建
-./isaaclab.sh -p amgg_robot_lab/scripts/amgg_teleop.py \
+uv run python amgg_robot_lab/scripts/amgg_teleop.py \
     --task Isaac-AM-DP123-Pico-XR-v0 --headless
 
 # PICO + CloudXR：必须保留外部相机（XR 图像面板复用这 4 路相机）
-./isaaclab.sh -p amgg_robot_lab/scripts/amgg_teleop.py \
+uv run python amgg_robot_lab/scripts/amgg_teleop.py \
     --task Isaac-AM-DP123-Pico-XR-v0 --xr --cloudxr_env cloudxrjs --viz kit
 ```
 
-`amgg_teleop.py` 会拒绝重复传入 `--external_callback`，因为它要占用该参数注册
-`amgg_robot_lab.tasks:register_tasks`。默认不要传 `--disable_external_cameras`：
+`amgg_teleop.py` 会先把扩展源码目录加入 `sys.path`，再拒绝重复传入 `--external_callback`，因为它要占用该参数注册
+`amgg_robot_lab.tasks:register_tasks`。需要指定显卡时使用官方参数 `--device cuda:N`；包装器不会改写
+`CUDA_VISIBLE_DEVICES`。默认不要传 `--disable_external_cameras`：
 XR 图像面板（`xr_camera_feeds`）依赖场景里的相机渲染。
 
 ## 契约（ABI）
@@ -86,8 +85,9 @@ XR 图像面板（`xr_camera_feeds`）依赖场景里的相机渲染。
 | `AM_DP123_LOCOMOTION_JOINT_NAMES` | 8 个底盘转向 / 驱动轮关节（本任务不控） |
 
 夹爪触发到关节的映射由
-`am_dp123_hand_closed_fraction()` 与 `AM_DP123_HAND_ACTION_SIDE_INDEX = (0, 0, 1, 1)`
-定义：一个手动作标量同时驱动同一只手的两根手指。
+`am_dp123_hand_closed_fraction()`、`AM_DP123_HAND_ACTION_SIDE_INDEX = (0, 0, 1, 1)` 与
+`AM_DP123_HAND_ACTION_TRIGGER_INDEX = (0, 0, 2, 2)` 定义：左右手输入保持独立，
+每只手的一个动作标量同时驱动该手的两根手指。
 
 ### 坐标系契约 `AM_DP123_FRAMES`
 
@@ -169,8 +169,12 @@ home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器
   以及 4 路 `image_*`（`normalize=False, clone=False`）。
 * 仿真：`dt = 1/120 s`、`decimation = 4`、`render_interval = 2`、`device = "cuda:0"`、
   单环境、`env_spacing = 2.5`。
-* XR：`xr_camera_feeds` 使用 `head_left`/`head_right` 组成 PiP 面板
-  （`mode="horizontal"`, `placement="head_locked"`）。
+* XR：`xr_camera_feeds` 使用 `head_left`/`head_right` 组成有左右标签的 PiP 面板
+  （`mode="horizontal"`, `placement="head_locked"`）。这两路图像都来自 Isaac Sim 相机。
+
+> 当前 Isaac Lab 3.0 的 `XrCameraFeedCfg` 是 XR 图像面板接口：左右相机并排显示，
+> 并不是把左图只送左眼、右图只送右眼。若验收标准要求逐眼立体投送，需要另建
+> `isaacteleop.viz`（Televiz）会话并共享 OpenXR handles；不能把现有 PiP 描述成真立体。
 
 ## 离线测试与静态检查
 
@@ -188,16 +192,17 @@ home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器
 
 ```bash
 cd amgg_robot_lab
-uv run --no-project --with pytest --with numpy python -m pytest -q   # 46 passed
+uv run --no-project --with pytest --with numpy python -m pytest -q   # 48 passed
 uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff ruff format --check .
 ```
 
 ## 服务器校验清单
 
 1. `./isaaclab.sh -i teleop`，并确认 `import pink, pin, isaacteleop` 成功。
-2. 无头冒烟：`./isaaclab.sh -p amgg_robot_lab/scripts/amgg_teleop.py --task Isaac-AM-DP123-Pico-XR-v0 --headless`
+2. 无头冒烟：`uv run python amgg_robot_lab/scripts/amgg_teleop.py --task Isaac-AM-DP123-Pico-XR-v0 --headless`
    （确认资产导入、Pink 控制器构建、4 路相机创建成功）。
 3. XR：加 `--xr --cloudxr_env cloudxrjs --viz kit`，**不要**加 `--disable_external_cameras`。
+   先确认机器人正立、左右相机图像方向正确，再分别闭合左右扳机确认两只手互不串扰。
 4. 用手柄实测并微调腕部对齐：`AM_DP123_LEFT_WRIST_TARGET_OFFSET_DEG` /
    `AM_DP123_RIGHT_WRIST_TARGET_OFFSET_DEG`（也可通过 IsaacTeleop 的 retargeter 调参 UI 实时调整）。
 5. 提交前运行 `uv run isaaclab -f`（ruff + pre-commit 全量检查）。
@@ -207,7 +212,8 @@ uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff 
 * 相机内参是仿真默认值；外参来自 URDF 支架几何，不是手眼标定结果。
 * 腕部 TCP 偏移（`left/right_tcp_offset_m`）仅作记录，Pink 目标是腕部关节坐标系。
 * 腰部在 Pink IK 中不被控制（`command_enabled=False`）；任务假设腰部保持 home 位。
-* 夹爪触发是二值量映射到 ±0.32 rad，尚未做力控/滑移建模。
+* 夹爪触发是连续量映射到 ±0.32 rad，尚未做力控/滑移建模。
+* `XrCameraFeedCfg` 显示的是双路 PiP；逐眼立体图像需要 Televiz 专用集成。
 
 ## 版本与迁移
 

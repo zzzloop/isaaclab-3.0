@@ -15,7 +15,7 @@ from isaaclab.envs.mdp.actions.pink_task_space_actions import PinkInverseKinemat
 from isaaclab.utils.configclass import configclass
 
 from amgg_robot_lab.contracts import (
-    AM_DP123_HAND_ACTION_SIDE_INDEX,
+    AM_DP123_HAND_ACTION_TRIGGER_INDEX,
     AM_DP123_HAND_CLOSED_POSITIONS,
     AM_DP123_HAND_JOINT_NAMES,
     AM_DP123_HAND_OPEN_POSITIONS,
@@ -30,12 +30,11 @@ if TYPE_CHECKING:
 class AmDp123PinkInverseKinematicsAction(PinkInverseKinematicsAction):
     """Pink action with trigger-driven AM-DP123 hand targets."""
 
-    def __init__(self, cfg: AmDp123PinkInverseKinematicsActionCfg, env: ManagerBasedEnv):
+    def __init__(self, cfg: AmDp123PinkInverseKinematicsActionCfg, env: ManagerBasedEnv) -> None:
         """Initialize the hand mapping tensors for the trailing action entries."""
         super().__init__(cfg, env)
         self._hand_joint_count = len(AM_DP123_HAND_JOINT_NAMES)
-        side_index = torch.tensor(AM_DP123_HAND_ACTION_SIDE_INDEX, device=self.device)
-        self._hand_side_index = side_index
+        self._hand_trigger_index = torch.tensor(AM_DP123_HAND_ACTION_TRIGGER_INDEX, device=self.device)
         self._hand_open_positions = torch.tensor(
             [AM_DP123_HAND_OPEN_POSITIONS[name] for name in AM_DP123_HAND_JOINT_NAMES], device=self.device
         )
@@ -56,7 +55,8 @@ class AmDp123PinkInverseKinematicsAction(PinkInverseKinematicsAction):
         closure ratio mirrors
         :func:`~amgg_robot_lab.contracts.am_dp123_hand_closed_fraction`. Both jaws
         of one hand travel from the same scalar, which is why the four trailing
-        action entries are two duplicated pairs.
+        action entries are two duplicated pairs. The left and right pairs
+        remain independent.
         """
         span = AM_DP123_HAND_TRIGGER_OPEN - AM_DP123_HAND_TRIGGER_CLOSED
         hand_targets = actions[:, -self._hand_joint_count :].clamp(
@@ -65,7 +65,7 @@ class AmDp123PinkInverseKinematicsAction(PinkInverseKinematicsAction):
         closed_fraction = (AM_DP123_HAND_TRIGGER_OPEN - hand_targets) / span
         mapped_actions = actions.clone()
         mapped_actions[:, -self._hand_joint_count :] = (
-            self._hand_open_positions + self._hand_travel * (closed_fraction[:, self._hand_side_index])
+            self._hand_open_positions + self._hand_travel * closed_fraction[:, self._hand_trigger_index]
         )
         super().process_actions(mapped_actions)
         # Restore the public PICO action ABI for diagnostics and demonstration recording.

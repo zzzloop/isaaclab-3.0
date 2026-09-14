@@ -24,11 +24,16 @@ headset on the validation server; the retargeters are handed to
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from amgg_robot_lab.contracts import (
     AM_DP123_HAND_JOINT_NAMES,
     AM_DP123_LEFT_HAND_JOINT_NAMES,
     AM_DP123_RIGHT_HAND_JOINT_NAMES,
 )
+
+if TYPE_CHECKING:
+    from isaacteleop.retargeting_engine.interface import BaseRetargeter, OutputCombiner
 
 AM_DP123_LEFT_WRIST_ACTION_ELEMENTS: tuple[str, ...] = ("l_px", "l_py", "l_pz", "l_qx", "l_qy", "l_qz", "l_qw")
 """Element names of the left wrist PICO pose inside the action tensor."""
@@ -77,7 +82,7 @@ uses this value when no recorded action buffer is available.
 """
 
 
-def build_am_dp123_pico_pipeline():
+def build_am_dp123_pico_pipeline() -> tuple[OutputCombiner, list[BaseRetargeter]]:
     """Build the 18-D dual-wrist and two-jaw hand action graph.
 
     Returns:

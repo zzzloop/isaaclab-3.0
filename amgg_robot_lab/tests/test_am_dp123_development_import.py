@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import sys
+import tomllib
 
 from amgg_robot_lab.assets import AM_DP123_ASSET_DATA_DIR, AM_DP123_MESH_DIR, AM_DP123_URDF_PATH
 
@@ -56,8 +57,7 @@ def test_pipeline_builder_defers_its_runtime_imports():
 
     source = inspect.getsource(am_dp123_pico_pipeline.build_am_dp123_pico_pipeline)
     assert "from isaacteleop" in source
-    module_source = inspect.getsource(am_dp123_pico_pipeline)
-    assert module_source.index("def build_am_dp123_pico_pipeline") < module_source.index("from isaacteleop")
+    assert "isaacteleop" not in sys.modules
 
 
 def test_task_registration_module_exposes_the_callback():
@@ -74,4 +74,18 @@ def test_task_registration_module_exposes_the_callback():
     assert '"Isaac-AM-DP123-Pico-XR-v0"' in tasks_source or "AM_DP123_PICO_XR_TASK_ID" in tasks_source
     env_source = (package_dir / "tasks" / "am_dp123_pico_xr_env_cfg.py").read_text(encoding="utf-8")
     assert "XrCameraFeedCfg" in env_source
+    assert "pipeline, retargeters = build_am_dp123_pico_pipeline()" in env_source
+    assert "pipeline_builder=lambda: pipeline" in env_source
+    assert "retargeters_to_tune=lambda: retargeters" in env_source
+    assert "build_am_dp123_pico_pipeline()[" not in env_source
     assert "disable_external_cameras" not in env_source
+    assert "focal_length=camera.focal_length_mm / 10.0" in env_source
+    assert "horizontal_aperture=camera.horizontal_aperture_mm / 10.0" in env_source
+
+    project_root = package_dir.parents[2]
+    project = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert project["project"]["entry-points"]["isaaclab.tasks"] == {"amgg_robot_lab": "amgg_robot_lab.tasks"}
+
+    wrapper_source = (project_root / "scripts" / "amgg_teleop.py").read_text(encoding="utf-8")
+    assert "_ensure_extension_importable()" in wrapper_source
+    assert "amgg_gpu" not in wrapper_source

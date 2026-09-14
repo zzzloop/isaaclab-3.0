@@ -5,8 +5,6 @@
 
 """AM-DP123 asset, contract, and PICO XR teleoperation package."""
 
-__version__ = "0.1.0"
-
 # Keep URDF/FK/contract tooling usable in lightweight Python environments. The
 # Isaac Lab runtime always provides Gymnasium and therefore registers tasks.
 try:
