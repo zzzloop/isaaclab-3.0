@@ -9,4 +9,3 @@ Added
 
 * Added the initial AMGG robot project scaffold for simulation, teleoperation,
   recording, kinematics, and real-robot integration.
-

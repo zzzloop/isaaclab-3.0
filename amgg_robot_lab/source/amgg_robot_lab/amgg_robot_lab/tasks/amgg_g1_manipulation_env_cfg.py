@@ -46,9 +46,7 @@ _BIMANUAL_LAYOUT = AMGG_G1_TASK_LAYOUTS["bimanual_reorient"]
 _PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["precision_insert"]
 _RANDOM_PRECISION_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_precision_insert"]
 _BUCKET_LAYOUT = AMGG_G1_TASK_LAYOUTS["random_cube_bucket"]
-_BUCKET_URDF_PATH = (
-    Path(__file__).resolve().parents[1] / "assets" / "data" / "objects" / "bucket" / "bucket.urdf"
-)
+_BUCKET_URDF_PATH = Path(__file__).resolve().parents[1] / "assets" / "data" / "objects" / "bucket" / "bucket.urdf"
 _G1_INSPIRE_USD_RELATIVE_PATH = Path("Isaac") / "IsaacLab" / "Robots" / "Unitree" / "G1" / "g1_29dof_inspire_hand.usd"
 _G1_INSPIRE_USD_REPO_PATH = (
     Path(__file__).resolve().parents[1] / "assets" / "data" / "robots" / "unitree_g1" / "g1_29dof_inspire_hand.usd"

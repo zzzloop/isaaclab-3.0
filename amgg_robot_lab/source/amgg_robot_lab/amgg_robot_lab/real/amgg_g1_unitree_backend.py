@@ -7,10 +7,10 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from math import isfinite
-import time
 
 from amgg_robot_lab.contracts import (
     AMGG_G1_BODY_JOINT_NAMES,

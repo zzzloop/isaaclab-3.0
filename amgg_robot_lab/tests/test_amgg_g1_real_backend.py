@@ -5,8 +5,8 @@
 
 """Tests for the guarded Unitree G1 real-robot backend boundary."""
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from amgg_robot_lab.contracts import AMGG_G1_CONTROLLED_ARM_JOINT_NAMES, AMGG_G1_HAND_MOTOR_NAMES
 from amgg_robot_lab.real import AMGG_G1_HARDWARE_COMMAND_NAMES, G1HardwareCommandLimiter, UnitreeG1DryRunBackend

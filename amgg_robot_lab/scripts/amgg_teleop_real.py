@@ -8,11 +8,11 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterable
 import json
-from pathlib import Path
 import sys
 import time
+from collections.abc import Iterable
+from pathlib import Path
 
 from amgg_robot_lab.real import (
     AMGG_G1_HARDWARE_COMMAND_NAMES,

@@ -147,8 +147,7 @@ def configure_preferred_gpu(
     visibility_note = ""
     if removed_visible_devices is not None:
         visibility_note = (
-            f" Cleared CUDA_VISIBLE_DEVICES={removed_visible_devices!r} so RTX/Vulkan and CUDA enumerate"
-            " the same GPUs."
+            f" Cleared CUDA_VISIBLE_DEVICES={removed_visible_devices!r} so RTX/Vulkan and CUDA enumerate the same GPUs."
         )
     print(
         f"[AMGG] Preferred physical GPU {preferred_index} ({identity}) -> "

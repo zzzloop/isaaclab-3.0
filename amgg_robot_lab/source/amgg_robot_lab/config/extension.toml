@@ -17,4 +17,3 @@ keywords = ["amgg", "isaaclab", "teleoperation", "robotics"]
 
 [[python.module]]
 name = "amgg_robot_lab"
-
