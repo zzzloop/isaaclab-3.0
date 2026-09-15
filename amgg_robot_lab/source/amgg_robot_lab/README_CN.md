@@ -58,7 +58,8 @@ uv run --no-project --with ruff ruff format --check .
 ```bash
 # 无头冒烟：只验证资产/场景/动作项能构建
 uv run python amgg_robot_lab/scripts/amgg_teleop.py \
-    --task Isaac-AM-DP123-Pico-XR-v0 --headless
+    --task Isaac-AM-DP123-Pico-XR-v0 --viz none \
+    --cloudxr_env none --no-auto_launch_cloudxr
 
 # PICO + CloudXR：必须保留外部相机（XR 图像面板复用这 4 路相机）
 uv run python amgg_robot_lab/scripts/amgg_teleop.py \
@@ -198,8 +199,8 @@ uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff 
 
 ## 服务器校验清单
 
-1. `./isaaclab.sh -i teleop`，并确认 `import pink, pin, isaacteleop` 成功。
-2. 无头冒烟：`uv run python amgg_robot_lab/scripts/amgg_teleop.py --task Isaac-AM-DP123-Pico-XR-v0 --headless`
+1. `./isaaclab.sh -i teleop`，并确认 `import pink, pinocchio, isaacteleop` 成功。
+2. 无头冒烟：`uv run python amgg_robot_lab/scripts/amgg_teleop.py --task Isaac-AM-DP123-Pico-XR-v0 --viz none --cloudxr_env none --no-auto_launch_cloudxr`
    （确认资产导入、Pink 控制器构建、4 路相机创建成功）。
 3. XR：加 `--xr --cloudxr_env cloudxrjs --viz kit`，**不要**加 `--disable_external_cameras`。
    先确认机器人正立、左右相机图像方向正确，再分别闭合左右扳机确认两只手互不串扰。
