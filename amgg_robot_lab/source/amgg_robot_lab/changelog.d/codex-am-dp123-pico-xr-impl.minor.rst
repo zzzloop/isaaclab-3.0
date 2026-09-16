@@ -19,5 +19,7 @@ Fixed
 ^^^^^
 
 * Fixed the Isaac Lab 3.0 base quaternion so the AM-DP123 starts upright.
-* Fixed right-hand trigger routing and connected the tuning UI to the live retargeters.
+* Fixed right-hand trigger routing.
+* Fixed PICO arm control by rebasing controller motion at Play, targeting the
+  URDF hand-base frames, and removing the XR tuning overlay from normal use.
 * Preserved scheduler GPU selection by delegating device choice to the official launcher.

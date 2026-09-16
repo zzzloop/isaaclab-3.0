@@ -88,12 +88,12 @@ def test_forward_kinematics_api_validates_the_state_dimension():
         compute_am_dp123_forward_kinematics([0.0] * 22)
 
 
-def test_idle_action_holds_the_home_pose():
-    """The published 18-D idle action is the world-frame home wrist pose plus open hands."""
+def test_idle_action_holds_the_hand_base_home_pose():
+    """The 18-D idle action is the URDF hand-base home pose plus open hands."""
     model = get_am_dp123_kinematics()
     assert len(AM_DP123_IDLE_ACTION) == 18
     for index, side in enumerate(("left", "right")):
-        transform = model.forward(f"{side}_arm_link7", HOME_POSE)
+        transform = model.forward(f"{side}_arm_hand_link", HOME_POSE)
         offset = index * 7
         expected_position = transform[:3, 3] + np.array((0.0, 0.0, AM_DP123_BASE_SPAWN_HEIGHT_M))
         np.testing.assert_allclose(

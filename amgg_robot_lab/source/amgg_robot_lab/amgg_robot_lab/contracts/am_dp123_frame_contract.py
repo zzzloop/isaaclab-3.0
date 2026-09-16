@@ -14,8 +14,8 @@ class AmDp123FrameContract:
     """Required robot frames shared by simulation, IK, and hardware backends.
 
     The TCP offsets are the wrist-to-hand-base translation expressed in the wrist
-    link frame [m]. They are recorded for downstream tooling only: the Pink IK
-    targets the wrist links, so no offset is applied when solving.
+    link frame [m]. Pink targets the hand-base links directly so their fixed URDF
+    rotations and translations are included in the IK model.
     """
 
     base_link: str = "base_link"

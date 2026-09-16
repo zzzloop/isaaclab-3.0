@@ -36,9 +36,9 @@ def solve_am_dp123_inverse_kinematics(
 ) -> tuple[float, ...]:
     """Solve limit-aware dual-arm IK from a seed configuration.
 
-    The offline solver is the testable FK/IK reference for hardware. Isaac Lab
-    runtime control uses Pink with the same URDF, joint order, limits, and wrist
-    frames.
+    The offline solver is the testable wrist-frame FK/IK reference for hardware.
+    Isaac Lab runtime control uses Pink with the same URDF, joint order, and
+    limits while targeting the fixed hand-base frames.
 
     Args:
         left_target: Desired left wrist pose in ``base_link``.

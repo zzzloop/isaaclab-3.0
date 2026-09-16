@@ -135,14 +135,14 @@ class AmDp123SceneCfg(InteractiveSceneCfg):
 
 @configclass
 class ActionsCfg:
-    """18-D absolute dual-wrist action plus four trigger-driven finger joints."""
+    """18-D absolute dual-hand action plus four trigger-driven finger joints."""
 
     upper_body_ik = mdp.AmDp123PinkInverseKinematicsActionCfg(
         pink_controlled_joint_names=list(AM_DP123_IK_JOINT_NAMES),
         hand_joint_names=list(AM_DP123_HAND_JOINT_NAMES),
         target_eef_link_names={
-            "left_wrist": AM_DP123_FRAMES.left_wrist_link,
-            "right_wrist": AM_DP123_FRAMES.right_wrist_link,
+            "left_hand": AM_DP123_FRAMES.left_hand_base_link,
+            "right_hand": AM_DP123_FRAMES.right_hand_base_link,
         },
         asset_name="robot",
         enable_gravity_compensation=True,
@@ -162,14 +162,14 @@ class ActionsCfg:
             fail_on_joint_limit_violation=False,
             variable_input_tasks=[
                 FrameTaskCfg(
-                    frame=AM_DP123_FRAMES.left_wrist_link,
+                    frame=AM_DP123_FRAMES.left_hand_base_link,
                     position_cost=8.0,
                     orientation_cost=1.0,
                     lm_damping=10.0,
                     gain=0.45,
                 ),
                 FrameTaskCfg(
-                    frame=AM_DP123_FRAMES.right_wrist_link,
+                    frame=AM_DP123_FRAMES.right_hand_base_link,
                     position_cost=8.0,
                     orientation_cost=1.0,
                     lm_damping=10.0,
@@ -179,7 +179,7 @@ class ActionsCfg:
                 NullSpacePostureTaskCfg(
                     cost=0.35,
                     lm_damping=1.0,
-                    controlled_frames=[AM_DP123_FRAMES.left_wrist_link, AM_DP123_FRAMES.right_wrist_link],
+                    controlled_frames=[AM_DP123_FRAMES.left_hand_base_link, AM_DP123_FRAMES.right_hand_base_link],
                     controlled_joints=list(AM_DP123_IK_JOINT_NAMES),
                 ),
             ],
@@ -298,10 +298,9 @@ class AmDp123PicoXrEnvCfg(ManagerBasedRLEnvCfg):
         self.num_rerenders_on_reset = 3
         self.sim.default_visualizer_cfg = VisualizerCfg(eye=(2.0, -1.6, 1.8), lookat=(0.55, 0.0, 0.9))
         self.xr = XrCfg(anchor_pos=(0.0, 0.0, 0.0), anchor_rot=(0.0, 0.0, 0.0, 1.0))
-        pipeline, retargeters = build_am_dp123_pico_pipeline()
+        pipeline = build_am_dp123_pico_pipeline()
         self.isaac_teleop = IsaacTeleopCfg(
             pipeline_builder=lambda: pipeline,
-            retargeters_to_tune=lambda: retargeters,
             sim_device=self.sim.device,
             xr_cfg=self.xr,
             xr_camera_feeds=[

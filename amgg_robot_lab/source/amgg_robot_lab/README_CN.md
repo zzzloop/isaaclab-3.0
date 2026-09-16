@@ -79,7 +79,7 @@ XR 图像面板（`xr_camera_feeds`）依赖场景里的相机渲染。
 | --- | --- |
 | `AM_DP123_STATE_JOINT_NAMES` / `AM_DP123_STATE_DIM` | 23：腰 3 + 左臂 7 + 右臂 7 + 手 4 + 头 2 |
 | `AM_DP123_IK_JOINT_NAMES` | 14：仅左右臂（腰、头、手不参与 Pink IK） |
-| `AM_DP123_ABSOLUTE_IK_ACTION_DIM` | 18：[左腕 xyz+xyzw(7), 右腕 xyz+xyzw(7), 4 个手动作] |
+| `AM_DP123_ABSOLUTE_IK_ACTION_DIM` | 18：[左手基座 xyz+xyzw(7), 右手基座 xyz+xyzw(7), 4 个手动作] |
 | `AM_DP123_CONTROLLED_JOINT_NAMES` / `AM_DP123_JOINT_POSITION_ACTION_DIM` | 18：`command_enabled=True` 的关节（腰为被动自由度） |
 | `AM_DP123_HAND_JOINT_NAMES` | `left_arm_hand_joint1_0/2_0`, `right_arm_hand_joint1_0/2_0` |
 | 手开合 | 张开 `0.0 rad`，闭合 `±0.32 rad`；触发 +1 张开、−1 握紧（`GripperRetargeter` 约定） |
@@ -101,7 +101,7 @@ XR 图像面板（`xr_camera_feeds`）依赖场景里的相机渲染。
 | `left_wrist_link` / `right_wrist_link` | `left_arm_link7` / `right_arm_link7` |
 | `left_hand_base_link` / `right_hand_base_link` | `left_arm_hand_link` / `right_arm_hand_link` |
 | `left_wrist_camera_link` / `right_wrist_camera_link` | `left_arm_camera_link` / `right_arm_camera_link` |
-| `left_tcp_offset_m` / `right_tcp_offset_m` | 腕部到指尖的 TCP 偏移，仅记录，Pink 目标是腕部 |
+| `left_tcp_offset_m` / `right_tcp_offset_m` | 腕部到手基座的固定偏移；Pink 通过 URDF 固定关节纳入求解 |
 
 ### 相机契约 `AM_DP123_CAMERAS`
 
@@ -133,25 +133,29 @@ XR 图像面板（`xr_camera_feeds`）依赖场景里的相机渲染。
   到任意链接的 FK。
 * `compute_am_dp123_forward_kinematics()`：指定关节角下的位姿（`base_link` 坐标系）。
 * `solve_am_dp123_inverse_kinematics()`：阻尼最小二乘 IK（`IkTarget` / `IkResult`）。
-* Pink IK 的笛卡尔目标只针对左右腕（`left_wrist_link` / `right_wrist_link`），
-  目标位姿来自 PICO 手柄，经 `Se3AbsRetargeter` 与
-  `AM_DP123_LEFT_WRIST_TARGET_OFFSET_DEG` / `AM_DP123_RIGHT_WRIST_TARGET_OFFSET_DEG`
-  转换。
+* Pink IK 的笛卡尔目标是 URDF 中的真实左右手基座
+  （`left_arm_hand_link` / `right_arm_hand_link`）。腕部到手部约 17 cm 的固定安装偏移和
+  ±90° 安装旋转由 URDF/Pinocchio 直接参与求解，不再用手工 TCP 偏移补偿。
 
-home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器人底座生成高度
-`AM_DP123_BASE_SPAWN_HEIGHT_M = 0.0729` m。
+home 姿态下的手基座目标由 URDF FK 生成：左侧位于 `base_link` 下
+(0.48874, 0.11600, 0.79338) m，右侧位于 (0.45082, −0.09157, 0.77453) m；世界坐标 Z
+再加机器人底座生成高度 `AM_DP123_BASE_SPAWN_HEIGHT_M = 0.0729` m。
 
 ## 遥操作管线
 
-`build_am_dp123_pico_pipeline()` 返回 `(OutputCombiner, retargeters)`：
+`build_am_dp123_pico_pipeline()` 返回一个 `OutputCombiner`：
 
-1. `ControllersSource` → `Se3AbsRetargeter`，输出左右腕绝对位姿。
-2. 左右手柄模拟扳机直接输出连续夹爪命令，不创建 PICO 不支持的 OpenXR HandTracker。
-3. `TensorReorderer` 按 `AM_DP123_ACTION_LAYOUT` 输出 18 维动作。
-4. 动作进入 `AmDp123PinkInverseKinematicsAction`：先把手部触发映射成手指关节目标，
+1. Play 后第一帧有效手柄位姿只用于捕获左右控制器原点，输出保持 URDF home，不发生跳变。
+2. 后续输出为 `hand_home + controller_delta`；平移 1:1，旋转用
+   `q_controller * inverse(q_origin) * q_home` 映射，全部采用 XYZW。
+3. Stop 会冻结当前手部目标并重新准备捕获原点；移动手柄后再 Play 可从原位置继续。
+4. 手柄跟踪丢失、位姿无效或四元数退化时保持上一目标，避免无效值进入 Pink。
+5. 左右手柄模拟扳机直接输出连续夹爪命令，不创建 PICO 不支持的 OpenXR HandTracker。
+6. `TensorReorderer` 按 `AM_DP123_ACTION_LAYOUT` 输出 18 维动作。
+7. 动作进入 `AmDp123PinkInverseKinematicsAction`：先把手部触发映射成手指关节目标，
    再交给官方 Pink 求解器；`_raw_actions` 保留 PICO 原始 ABI 以便诊断与录制。
 
-`AM_DP123_IDLE_ACTION` 是 18 维参考动作（腕部在 home 位、双手张开），用作无输入时的
+`AM_DP123_IDLE_ACTION` 是 18 维参考动作（手基座在 home 位、双手张开），用作无输入时的
 保持指令，也可用于回放脚本。
 
 ## 环境配置
@@ -161,7 +165,7 @@ home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器
 * 场景：AM-DP123 机器人 + 0.78 m 高工作台 + 5 cm 方块 + 放置标记 + 地面 + 两盏灯，
   以及上述 4 路相机（相机父链接由契约给出，因此相机跟随对应的真实连杆）。
 * 动作：`mdp.AmDp123PinkInverseKinematicsActionCfg`，`pink_controlled_joint_names`
-  为 14 个臂关节，`target_eef_link_names` 为左右腕，开启重力补偿；
+  为 14 个臂关节，两个 `FrameTask` 分别控制真实左右手基座，开启重力补偿；
   `fail_on_joint_limit_violation=False`（腰部限位较窄，改回 `True` 前需在服务器上重新标定）。
 * 求解器参数：`FrameTaskCfg(position_cost=8.0, orientation_cost=1.0, lm_damping=10.0, gain=0.45)`、
   `DampingTaskCfg(cost=0.4)`、`NullSpacePostureTaskCfg(cost=0.35)`。
@@ -178,7 +182,7 @@ home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器
 
 ## 离线测试与静态检查
 
-`tests/` 下的 7 个文件只依赖 `numpy` + 标准库（在 Windows 上即可运行），覆盖：
+`tests/` 下的 8 个文件只依赖 `numpy` + 标准库（在 Windows 上即可运行），覆盖：
 
 | 测试文件 | 覆盖内容 |
 | --- | --- |
@@ -187,12 +191,13 @@ home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器
 | `test_am_dp123_camera_contract.py` | 相机外参落在支架镜头平面、基线、内参与 FOV |
 | `test_am_dp123_hand_grasp.py` | 触发量到手指关节的开合映射 |
 | `test_am_dp123_kinematics.py` | 离线 FK / 雅可比 / DLS-IK 精度与限位裕度 |
+| `test_am_dp123_pico_retargeting.py` | Play 零点捕获、相对姿态映射、掉帧保持、双手基座 IK 可达性 |
 | `test_am_dp123_action_abi.py` | 18 维动作布局与 PICO 管线的元素顺序 |
 | `test_am_dp123_development_import.py` | 包可导入、发布资产存在 |
 
 ```bash
 cd amgg_robot_lab
-uv run --no-project --with pytest --with numpy python -m pytest -q   # 50 passed
+uv run --no-project --with pytest --with numpy python -m pytest -q
 uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff ruff format --check .
 ```
 
@@ -202,16 +207,17 @@ uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff 
 2. 无头冒烟：`uv run python amgg_robot_lab/scripts/amgg_teleop.py --task Isaac-AM-DP123-Pico-XR-v0 --viz none --cloudxr_env none --no-auto_launch_cloudxr`
    （确认资产导入、Pink 控制器构建、4 路相机创建成功）。
 3. XR：加 `--xr --cloudxr_env cloudxrjs --viz none`，**不要**加 `--disable_external_cameras`。
-   正常遥操不要加 `--enable_debug_visualization`；该参数会在 PICO 画面中加入手柄坐标轴和手部标记。
-   先确认机器人正立、左右相机图像方向正确，再分别闭合左右扳机确认两只手互不串扰。
-4. 用手柄实测并微调腕部对齐：`AM_DP123_LEFT_WRIST_TARGET_OFFSET_DEG` /
-   `AM_DP123_RIGHT_WRIST_TARGET_OFFSET_DEG`（也可通过 IsaacTeleop 的 retargeter 调参 UI 实时调整）。
+   正常遥操不要加 `--enable_debug_visualization`。运行配置不再创建 retargeter 调参面板，PICO
+   视野中不会出现该面板的空白文字框和两条三角形交互射线。
+4. 戴好头显后先把两只手柄放在舒适中立位，再点 Play。第一帧只建立原点，机器人应保持 home；
+   随后分别前后、左右、上下移动 3–5 cm，确认同侧手基座同方向运动，再验证旋转与夹爪。
+   需要重新摆放手柄时先 Stop，摆好后再 Play，机器人应从停止位置连续恢复。
 5. 提交前运行 `uv run isaaclab -f`（ruff + pre-commit 全量检查）。
 
 ## 已知限制
 
 * 相机内参是仿真默认值；外参来自 URDF 支架几何，不是手眼标定结果。
-* 腕部 TCP 偏移（`left/right_tcp_offset_m`）仅作记录，Pink 目标是腕部关节坐标系。
+* `left/right_tcp_offset_m` 仍供硬件和诊断代码读取；仿真 Pink 直接控制 URDF 手基座帧。
 * 腰部在 Pink IK 中不被控制（`command_enabled=False`）；任务假设腰部保持 home 位。
 * 夹爪触发是连续量映射到 ±0.32 rad，尚未做力控/滑移建模。
 * `XrCameraFeedCfg` 显示的是双路 PiP；逐眼立体图像需要 Televiz 专用集成。
