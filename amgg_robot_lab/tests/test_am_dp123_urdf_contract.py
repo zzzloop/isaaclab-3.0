@@ -14,6 +14,7 @@ from math import isclose
 from amgg_robot_lab.assets import (
     AM_DP123_ASSET_DATA_DIR,
     AM_DP123_BASE_SPAWN_ORIENTATION_XYZW,
+    AM_DP123_INITIAL_JOINT_POSITIONS,
     AM_DP123_URDF_PATH,
 )
 from amgg_robot_lab.contracts import (
@@ -21,6 +22,7 @@ from amgg_robot_lab.contracts import (
     AM_DP123_HAND_JOINT_NAMES,
     AM_DP123_JOINT_SPECS,
     AM_DP123_LOCOMOTION_JOINT_NAMES,
+    AM_DP123_STATE_JOINT_NAMES,
 )
 
 URDF_ROOT = ET.parse(AM_DP123_URDF_PATH).getroot()
@@ -34,6 +36,16 @@ def test_urdf_topology_is_stable():
     assert len(JOINTS) == 60
     movable = {name: joint.get("type") for name, joint in JOINTS.items() if joint.get("type") != "fixed"}
     assert Counter(movable.values()) == {"revolute": 23, "continuous": 8}
+
+
+def test_initial_positions_use_one_exact_entry_per_movable_joint():
+    """Pink must resolve the initial pose without overlapping regex entries."""
+    expected_names = set(AM_DP123_LOCOMOTION_JOINT_NAMES) | set(AM_DP123_STATE_JOINT_NAMES)
+
+    assert set(AM_DP123_INITIAL_JOINT_POSITIONS) == expected_names
+    assert set(AM_DP123_INITIAL_JOINT_POSITIONS) == {
+        name for name, joint in JOINTS.items() if joint.get("type") != "fixed"
+    }
 
 
 def test_contract_joints_match_urdf_limits():

@@ -31,6 +31,16 @@ AM_DP123_BASE_SPAWN_HEIGHT_M = 0.0729
 AM_DP123_BASE_SPAWN_ORIENTATION_XYZW = (0.0, 0.0, 0.0, 1.0)
 """Identity base orientation in Isaac Lab's ``xyzw`` quaternion order."""
 
+AM_DP123_INITIAL_JOINT_POSITIONS = {
+    **dict.fromkeys(AM_DP123_LOCOMOTION_JOINT_NAMES, 0.0),
+    **AM_DP123_HOME_POSITIONS,
+}
+"""Initial positions [rad] for every movable AM-DP123 joint, keyed by exact joint name.
+
+Pink resolves this mapping against its Pinocchio model. Exact keys avoid the
+ambiguous ``.*`` plus per-joint override pattern rejected by Isaac Lab 3.0.
+"""
+
 
 def get_am_dp123_robot_cfg() -> ArticulationCfg:
     """Build the AM-DP123 fixed-base articulation configuration."""
@@ -71,7 +81,7 @@ def get_am_dp123_robot_cfg() -> ArticulationCfg:
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.0, 0.0, AM_DP123_BASE_SPAWN_HEIGHT_M),
             rot=AM_DP123_BASE_SPAWN_ORIENTATION_XYZW,
-            joint_pos={**{".*": 0.0}, **AM_DP123_HOME_POSITIONS},
+            joint_pos=AM_DP123_INITIAL_JOINT_POSITIONS,
             joint_vel={".*": 0.0},
         ),
         # Keep the exact URDF limits: the hand fingers close to their one-sided
