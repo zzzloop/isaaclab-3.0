@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "confirmed": true,
+  "model_action_dim": 18,
+  "mode": "absolute_joint_position",
+  "sim_joint_names": [
+    "openarm_left_joint1",
+    "openarm_left_joint2",
+    "openarm_left_joint3",
+    "openarm_left_joint4",
+    "openarm_left_joint5",
+    "openarm_left_joint6",
+    "openarm_left_joint7",
+    "openarm_right_joint1",
+    "openarm_right_joint2",
+    "openarm_right_joint3",
+    "openarm_right_joint4",
+    "openarm_right_joint5",
+    "openarm_right_joint6",
+    "openarm_right_joint7",
+    "left_arm_hand_joint1_0",
+    "left_arm_hand_joint2_0",
+    "right_arm_hand_joint1_0",
+    "right_arm_hand_joint2_0"
+  ],
+  "source_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+  "scale": 1.0,
+  "offset": 0.0,
+  "velocity_scale": 0.5,
+  "notes": "Identity 18-D layout used by the mock policies and by the PI0.5 pipeline path tests."
+}

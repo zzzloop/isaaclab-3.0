@@ -2,7 +2,8 @@
 
 本目录是 `amgg_robot_lab` 外部项目的中文文档。项目把 AM-DP123 移动双臂机器人接入
 Isaac Lab 官方 `isaaclab_teleop` 遥操作管线，用于 PICO 手柄 + CloudXR 的真机对齐与
-遥操作验证。
+遥操作验证，并额外提供一个不依赖真机、PICO 或 Pink IK 的 PI0.5 策略仿真验证任务
+（见下文“PI0.5 仿真验证平台”）。
 
 ## 目标与路线（路线 A）
 
@@ -21,7 +22,8 @@ amgg_robot_lab/
 ├── .gitattributes                  # *.STL 走 Git LFS
 ├── pyproject.toml                  # 包构建、依赖与离线检查配置
 ├── scripts/
-│   └── amgg_teleop.py              # 注入 --external_callback 后调用官方遥操作脚本
+│   ├── amgg_teleop.py              # 注入 --external_callback 后调用官方遥操作脚本
+│   └── am_dp123_pi05_eval.py       # PI0.5 mock / remote 策略运行与记录入口
 ├── source/amgg_robot_lab/
 │   ├── changelog.d/                # 变更片段
 │   ├── README.md / README_CN.md    # 英文 / 中文文档
@@ -29,9 +31,10 @@ amgg_robot_lab/
 │       ├── assets/                 # AM-DP123 URDF + STL + 机器人配置
 │       ├── contracts/              # 关节 / 坐标系 / 相机契约
 │       ├── kinematics/             # 离线 URDF FK / 雅可比 / DLS-IK
-│       ├── tasks/                  # Gym 注册 + 环境配置 + 自定义 Pink 动作项
+│       ├── policy/                 # OpenPI 观测协议 + 动作布局 JSON + 安全适配器
+│       ├── tasks/                  # Gym 注册 + 遥操/PI0.5 环境配置 + 自定义 Pink 动作项
 │       └── teleop/                 # IsaacTeleop PICO 管线（18 维动作）
-└── tests/                          # 7 个离线测试文件
+└── tests/                          # 10 个离线测试文件
 ```
 
 ## 安装
@@ -182,9 +185,115 @@ home 姿态下的手基座目标由 URDF FK 生成：左侧位于 `base_link` �
 > 并不是把左图只送左眼、右图只送右眼。若验收标准要求逐眼立体投送，需要另建
 > `isaacteleop.viz`（Televiz）会话并共享 OpenXR handles；不能把现有 PiP 描述成真立体。
 
+## PI0.5 仿真验证平台
+
+独立于 PICO 遥操的 PI0.5 策略仿真任务，用于在真机部署前让 PI0.5 策略通过 WebSocket
+接入 IsaacLab，在 AM-DP123 URDF、四路相机和物理环境上执行、观察、限位、记录和回放。
+它与遥操任务是两个独立入口，不依赖真机、PICO、Pink IK 或 CloudXR。
+
+* 任务：`Isaac-AM-DP123-Pi05-Eval-v0`（`AmDp123Pi05EvalEnvCfg`）。
+* 状态 ABI 仍是 23 维（`AM_DP123_STATE_JOINT_NAMES`），执行 ABI 仍是 18 维
+  （`AM_DP123_CONTROLLED_JOINT_NAMES`），动作项为官方 `mdp.JointPositionActionCfg`
+  （`preserve_order=True`、`use_default_offset=False`、逐关节 `clip`）。
+* 频率 30 Hz（`sim.dt = 1/120`、`decimation = 4`、`render_interval = 2`），单环境。
+* 模型动作维度由外部 JSON 决定，**不写死 32 维**：
+  * `policy/layouts/am_dp123_joint_position_18.json`：已确认的恒等 18 维布局，mock 与通路测试默认使用。
+  * `policy/layouts/am_dp123_pi05_32_template.json`：未确认模板，`source_indices` 为 `null`，不能作为
+    运行布局。PI0.5 的 32 维含义确认后，只需填写该 JSON 并同步 OpenPI 数据 transform。
+
+### 观测协议
+
+`amgg_robot_lab.policy.build_pi05_observation()` 把 Isaac Lab 观测转换为 OpenPI payload：
+
+| payload key | 内容 |
+| --- | --- |
+| `observation/image` | `head_left` 640×480 RGB |
+| `observation/image_right` | `head_right` RGB（稳定扩展键，双臂/双目） |
+| `observation/wrist_image` | `left_wrist` RGB |
+| `observation/wrist_image_right` | `right_wrist` RGB（稳定扩展键） |
+| `observation/state` | 23 维 `float32` 关节位置，顺序固定 |
+| `observation/joint_velocity` | 23 维 `float32` 关节速度（稳定扩展键） |
+| `prompt` | 任务指令原文 |
+
+图像统一转为连续 `uint8` RGB（RGBA 去 alpha，浮点 `[0,1]` 映射到 `0–255`）；状态不在客户端
+归一化，归一化由 OpenPI 服务端训练配置处理。`--policy remote` 时使用
+`openpi_client.image_tools.resize_with_pad(..., 224, 224)` 与 `convert_to_uint8()`；
+`openpi_client` 只在 remote 模式延迟导入，不是 `amgg_robot_lab` 的强制依赖。
+
+### 动作安全适配器
+
+`Pi05ActionAdapter` 按布局把 `(T, model_action_dim)` 或 `(model_action_dim,)` 映射为 18 维绝对关节目标：
+
+1. 校验 chunk 非空、无 NaN/Inf、宽度等于 `model_action_dim`；
+2. 用 `source_indices` 选出 18 维，应用 `scale`、`offset`（标量或 18 维数组均可）；
+3. `absolute_joint_position` 直接取目标，`delta_joint_position` 从上一目标累加；
+4. 按 `AM_DP123_JOINT_SPECS` 做位置限位；
+5. 按 `max_velocity_rad_s * control_dt * velocity_scale` 做逐步速度限位；
+6. reset 后从当前关节位置起限速，不从零开始；协议或推理失败时保持当前目标。
+
+### 运行命令
+
+mock_hold（无头，验证环境 / 四路相机 / 观测 / 适配 / 步进 / 记录）：
+
+```bash
+conda activate isaaclab30
+cd ~/zzk_data/IsaacLab
+
+./isaaclab.sh -p amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
+    --policy mock_hold --max_steps 120 --viz none --device cuda:0 \
+    --kit_args "--/renderer/multiGpu/enabled=false"
+```
+
+mock_sine（肉眼确认策略动作确实驱动机器人）：
+
+```bash
+./isaaclab.sh -p amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
+    --policy mock_sine --max_steps 600 --viz kit --device cuda:0 \
+    --kit_args "--/renderer/multiGpu/enabled=false"
+```
+
+remote（OpenPI 服务端与 IsaacLab 客户端使用独立环境 / GPU）：
+
+```bash
+# 服务端（独立环境）
+cd ~/openpi
+uv run scripts/serve_policy.py policy:checkpoint \
+    --policy.config=<AM_DP123_CONFIG> --policy.dir=<CHECKPOINT_PATH>
+
+# IsaacLab 客户端
+conda activate isaaclab30
+cd ~/zzk_data/IsaacLab
+./isaaclab.sh -p amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
+    --policy remote --host 127.0.0.1 --port 8000 \
+    --prompt "pick up the orange cube and place it on the green target" \
+    --action_layout amgg_robot_lab/source/amgg_robot_lab/amgg_robot_lab/policy/layouts/<CONFIRMED_LAYOUT>.json \
+    --action_horizon 8 --viz none --device cuda:0 \
+    --kit_args "--/renderer/multiGpu/enabled=false"
+```
+
+> 32 维含义确认前，remote 模式只完成网络、shape 与安全失败验证，不能据此宣称能正确控制
+> 机器人。推理连续失败 `MAX_CONSECUTIVE_INFERENCE_FAILURES` 次后安全退出，不会无限高速重试。
+
+### 记录格式
+
+默认目录 `outputs/am_dp123_pi05_eval/<timestamp>/`，每个 episode 保存：
+
+* `episode_XXXXXX.npz`：`joint_pos (N,23)`、`joint_vel (N,23)`、`object_position (N,3)`、
+  `model_action (N,model_action_dim)`、`applied_joint_target (N,18)`、`terminated (N,)`、`truncated (N,)`。
+* `episode_XXXXXX.json`：task id、prompt、policy mode、remote host/port、action layout 路径与
+  SHA-256、state/controlled 关节名、control dt、Git commit、步数与终止原因。
+* `--record_images` 时另存 `episode_XXXXXX_images.npz`：默认每 15 步一帧（`--image_stride`），
+  最多 120 帧，避免无界内存积累；不引入视频编码依赖。
+
+### 真机部署前必须统一
+
+动作布局（`source_indices` 与模式）、归一化统计（state/action 均值方差）、相机标定（内参与手眼
+外参）、控制频率与延迟。当前 18 维布局与四路相机参数是**仿真配置，不是真机标定结果**；
+也不得把当前仿真相机参数描述为真机标定结果。
+
 ## 离线测试与静态检查
 
-`tests/` 下的 8 个文件只依赖 `numpy` + 标准库（在 Windows 上即可运行），覆盖：
+`tests/` 下的 10 个文件只依赖 `numpy` + 标准库（在 Windows 上即可运行），覆盖：
 
 | 测试文件 | 覆盖内容 |
 | --- | --- |
@@ -196,6 +305,8 @@ home 姿态下的手基座目标由 URDF FK 生成：左侧位于 `base_link` �
 | `test_am_dp123_pico_retargeting.py` | Play 零点捕获、相对姿态映射、掉帧保持、双手基座 IK 可达性 |
 | `test_am_dp123_action_abi.py` | 18 维动作布局与 PICO 管线的元素顺序 |
 | `test_am_dp123_development_import.py` | 包可导入、发布资产存在 |
+| `test_am_dp123_pi05_protocol.py` | OpenPI 观测 payload、动作布局校验、位置/速度限位与 delta/absolute 模式 |
+| `test_am_dp123_pi05_registration.py` | PI0.5 任务注册、直接关节位置动作项、与 Pink/IsaacTeleop 解耦、布局打包 |
 
 ```bash
 cd amgg_robot_lab
@@ -214,7 +325,10 @@ uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff 
 4. 戴好头显后先把两只手柄放在舒适中立位，再点 Play。第一帧只建立原点，机器人应保持 home；
    随后分别前后、左右、上下移动 3–5 cm，确认同侧手基座同方向运动，再验证旋转与夹爪。
    需要重新摆放手柄时先 Stop，摆好后再 Play，机器人应从停止位置连续恢复。
-5. 提交前运行 `uv run isaaclab -f`（ruff + pre-commit 全量检查）。
+5. PI0.5 冒烟（独立入口）：`./isaaclab.sh -p amgg_robot_lab/scripts/am_dp123_pi05_eval.py --policy mock_hold --max_steps 120 --viz none --device cuda:0 --kit_args "--/renderer/multiGpu/enabled=false"`，
+   确认四路相机创建、机器人保持 home、120 step 后正常退出并生成 NPZ/JSON（无 NaN、shape 正确）；
+   再用 `--policy mock_sine --max_steps 600 --viz kit` 确认机器人平滑小幅运动、无越限或仿真发散。
+6. 提交前运行 `uv run isaaclab -f`（ruff + pre-commit 全量检查）。
 
 ## 已知限制
 

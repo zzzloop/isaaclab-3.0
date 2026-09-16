@@ -15,6 +15,20 @@ Added
   instead of the previous AMGG names; downstream code must import the new
   ``amgg_robot_lab.contracts.am_dp123_*`` contracts.
 
+* Added the ``Isaac-AM-DP123-Pi05-Eval-v0`` PI0.5 simulation validation task. It
+  drives the 18-D joint command ABI directly with the official
+  ``JointPositionActionCfg`` and is decoupled from the PICO/Pink teleoperation
+  pipeline.
+
+* Added ``amgg_robot_lab.policy``: the OpenPI observation payload builder and the
+  ``Pi05ActionAdapter`` safety adapter. The model action dimension is configured by
+  external JSON layouts (an identity 18-D layout plus an explicitly unconfirmed 32-D
+  template) instead of hard-coding the PI0.5 action semantics.
+
+* Added ``scripts/am_dp123_pi05_eval.py`` with ``mock_hold``, ``mock_sine``, and a
+  lazily imported ``remote`` OpenPI WebSocket client, plus bounded episode NPZ/JSON
+  recording of states, actions, targets, terminations, and optional images.
+
 Fixed
 ^^^^^
 

@@ -16,11 +16,23 @@ AM_DP123_PICO_XR_TASK_ID = "Isaac-AM-DP123-Pico-XR-v0"
 AM_DP123_PICO_XR_ENV_CFG = "AmDp123PicoXrEnvCfg"
 AM_DP123_PICO_XR_ENV_CFG_MODULE = "am_dp123_pico_xr_env_cfg"
 
+AM_DP123_PI05_EVAL_TASK_ID = "Isaac-AM-DP123-Pi05-Eval-v0"
+"""Registered task id of the AM-DP123 PI0.5 policy evaluation environment."""
+
+AM_DP123_PI05_EVAL_ENV_CFG = "AmDp123Pi05EvalEnvCfg"
+AM_DP123_PI05_EVAL_ENV_CFG_MODULE = "am_dp123_pi05_env_cfg"
+
 if gym is not None:
     gym.register(
         id=AM_DP123_PICO_XR_TASK_ID,
         entry_point="isaaclab.envs:ManagerBasedRLEnv",
         kwargs={"env_cfg_entry_point": f"{__name__}.{AM_DP123_PICO_XR_ENV_CFG_MODULE}:{AM_DP123_PICO_XR_ENV_CFG}"},
+        disable_env_checker=True,
+    )
+    gym.register(
+        id=AM_DP123_PI05_EVAL_TASK_ID,
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        kwargs={"env_cfg_entry_point": f"{__name__}.{AM_DP123_PI05_EVAL_ENV_CFG_MODULE}:{AM_DP123_PI05_EVAL_ENV_CFG}"},
         disable_env_checker=True,
     )
 
@@ -34,4 +46,12 @@ def register_tasks() -> None:
     """
 
 
-__all__ = ["AM_DP123_PICO_XR_ENV_CFG", "AM_DP123_PICO_XR_ENV_CFG_MODULE", "AM_DP123_PICO_XR_TASK_ID", "register_tasks"]
+__all__ = [
+    "AM_DP123_PI05_EVAL_ENV_CFG",
+    "AM_DP123_PI05_EVAL_ENV_CFG_MODULE",
+    "AM_DP123_PI05_EVAL_TASK_ID",
+    "AM_DP123_PICO_XR_ENV_CFG",
+    "AM_DP123_PICO_XR_ENV_CFG_MODULE",
+    "AM_DP123_PICO_XR_TASK_ID",
+    "register_tasks",
+]

@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "amgg_robot_lab"
 version = "0.1.0"
-description = "AM-DP123 PICO XR teleoperation environment for Isaac Lab."
+description = "AM-DP123 PICO XR teleoperation and PI0.5 evaluation environments for Isaac Lab."
 readme = "source/amgg_robot_lab/README.md"
 license = "BSD-3-Clause"
 authors = [{ name = "AMGG" }]
@@ -41,6 +41,7 @@ amgg_robot_lab = [
     "assets/data/AM-DP123/*.md",
     "assets/data/AM-DP123/meshes/*.STL",
     "assets/data/AM-DP123/urdf/*.urdf",
+    "policy/layouts/*.json",
 ]
 
 [tool.ruff]
