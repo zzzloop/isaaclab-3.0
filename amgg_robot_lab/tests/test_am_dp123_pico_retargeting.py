@@ -129,3 +129,20 @@ def test_small_dual_hand_motion_is_reachable_from_home():
         achieved = model.forward(target.link_name, result.joint_positions)
         np.testing.assert_allclose(achieved[:3, 3], target.transform[:3, 3], atol=1.0e-4)
         np.testing.assert_allclose(achieved[:3, :3], target.transform[:3, :3], atol=1.0e-3)
+
+
+def test_forward_dual_hand_motion_bends_both_elbows():
+    """A representative reach must use both elbow joints instead of leaving the arms rigid."""
+    model = get_am_dp123_kinematics()
+    home = dict(AM_DP123_HOME_POSITIONS)
+    targets = []
+    for frame in (AM_DP123_FRAMES.left_hand_base_link, AM_DP123_FRAMES.right_hand_base_link):
+        transform = model.forward(frame, home)
+        transform[0, 3] += 0.10
+        targets.append(IkTarget(frame, transform))
+
+    result = model.solve(targets, AM_DP123_IK_JOINT_NAMES, home)
+    assert result.converged, result
+    for elbow_joint in ("openarm_left_joint4", "openarm_right_joint4"):
+        elbow_motion = abs(result.joint_positions[elbow_joint] - home[elbow_joint])
+        assert elbow_motion > 0.20, (elbow_joint, elbow_motion)

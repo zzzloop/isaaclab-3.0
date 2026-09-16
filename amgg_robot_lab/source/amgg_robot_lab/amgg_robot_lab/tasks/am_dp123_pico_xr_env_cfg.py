@@ -163,22 +163,26 @@ class ActionsCfg:
             variable_input_tasks=[
                 FrameTaskCfg(
                     frame=AM_DP123_FRAMES.left_hand_base_link,
-                    position_cost=8.0,
+                    # Match the proven first-generation controller's task
+                    # balance: hand position dominates wrist orientation.
+                    position_cost=50.0,
                     orientation_cost=1.0,
-                    lm_damping=10.0,
-                    gain=0.45,
+                    lm_damping=0.1,
+                    gain=1.0,
                 ),
                 FrameTaskCfg(
                     frame=AM_DP123_FRAMES.right_hand_base_link,
-                    position_cost=8.0,
+                    position_cost=50.0,
                     orientation_cost=1.0,
-                    lm_damping=10.0,
-                    gain=0.45,
+                    lm_damping=0.1,
+                    gain=1.0,
                 ),
-                DampingTaskCfg(cost=0.4),
+                DampingTaskCfg(cost=0.1),
                 NullSpacePostureTaskCfg(
-                    cost=0.35,
-                    lm_damping=1.0,
+                    # A small posture prior resolves the seventh arm DOF
+                    # without pinning shoulders and elbows near their home pose.
+                    cost=0.02,
+                    lm_damping=0.0,
                     controlled_frames=[AM_DP123_FRAMES.left_hand_base_link, AM_DP123_FRAMES.right_hand_base_link],
                     controlled_joints=list(AM_DP123_IK_JOINT_NAMES),
                 ),

@@ -22,4 +22,6 @@ Fixed
 * Fixed right-hand trigger routing.
 * Fixed PICO arm control by rebasing controller motion at Play, targeting the
   URDF hand-base frames, and removing the XR tuning overlay from normal use.
+* Fixed stiff AM-DP123 arm motion by matching the proven first-generation IK
+  task weighting and reducing the home-posture bias on shoulder and elbow joints.
 * Preserved scheduler GPU selection by delegating device choice to the official launcher.

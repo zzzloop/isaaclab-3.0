@@ -83,6 +83,11 @@ def test_task_registration_module_exposes_the_callback():
     assert "retargeters_to_tune" not in env_source
     assert "frame=AM_DP123_FRAMES.left_hand_base_link" in env_source
     assert "frame=AM_DP123_FRAMES.right_hand_base_link" in env_source
+    assert env_source.count("position_cost=50.0") == 2
+    assert env_source.count("orientation_cost=1.0") == 2
+    assert env_source.count("lm_damping=0.1") == 2
+    assert "DampingTaskCfg(cost=0.1)" in env_source
+    assert "cost=0.02" in env_source
     assert "build_am_dp123_pico_pipeline()[" not in env_source
     assert "disable_external_cameras" not in env_source
     assert "focal_length=camera.focal_length_mm / 10.0" in env_source

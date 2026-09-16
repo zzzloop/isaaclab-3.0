@@ -167,8 +167,10 @@ home 姿态下的手基座目标由 URDF FK 生成：左侧位于 `base_link` �
 * 动作：`mdp.AmDp123PinkInverseKinematicsActionCfg`，`pink_controlled_joint_names`
   为 14 个臂关节，两个 `FrameTask` 分别控制真实左右手基座，开启重力补偿；
   `fail_on_joint_limit_violation=False`（腰部限位较窄，改回 `True` 前需在服务器上重新标定）。
-* 求解器参数：`FrameTaskCfg(position_cost=8.0, orientation_cost=1.0, lm_damping=10.0, gain=0.45)`、
-  `DampingTaskCfg(cost=0.4)`、`NullSpacePostureTaskCfg(cost=0.35)`。
+* 求解器参数沿用一代腕位姿 IK 的代价比例：
+  `FrameTaskCfg(position_cost=50.0, orientation_cost=1.0, lm_damping=0.1, gain=1.0)`、
+  `DampingTaskCfg(cost=0.1)`、`NullSpacePostureTaskCfg(cost=0.02)`。较弱的姿态先验只用于
+  消除 7 自由度手臂的冗余，不再把肩肘强行拉回 home。
 * 观测：`actions`、`robot_joint_pos/vel`（23 维状态顺序）、左右腕位姿、方块位置，
   以及 4 路 `image_*`（`normalize=False, clone=False`）。
 * 仿真：`dt = 1/120 s`、`decimation = 4`、`render_interval = 2`、`device = "cuda:0"`、
