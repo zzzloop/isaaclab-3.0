@@ -11,6 +11,7 @@ import numpy as np
 import pinocchio as pin
 import pytest
 from pink.exceptions import FrameNotFound
+from pinocchio.robot_wrapper import RobotWrapper
 
 from isaaclab.controllers.pink_ik.pink_kinematics_configuration import PinkKinematicsConfiguration
 
@@ -63,6 +64,27 @@ class TestPinkKinematicsConfiguration:
 
         # Check that the controlled model has the same number or fewer joints than the full model
         assert pink_config.controlled_model.nq == pink_config.full_model.nq
+
+    def test_initialization_with_package_search_directory(
+        self, urdf_path, tmp_path, controlled_joint_names, monkeypatch
+    ):
+        """A single package search root must be passed to Pinocchio as a directory list."""
+        package_dirs = []
+        build_from_urdf = RobotWrapper.BuildFromURDF
+
+        def capture_package_dirs(filename, directories):
+            package_dirs.append(directories)
+            return build_from_urdf(filename, directories)
+
+        monkeypatch.setattr(RobotWrapper, "BuildFromURDF", capture_package_dirs)
+        pink_config = PinkKinematicsConfiguration(
+            urdf_path=str(urdf_path),
+            mesh_path=str(tmp_path),
+            controlled_joint_names=controlled_joint_names,
+        )
+
+        assert pink_config.full_model is not None
+        assert package_dirs == [[str(tmp_path)]]
 
     def test_joint_names_properties(self, pink_config):
         """Test joint name properties."""

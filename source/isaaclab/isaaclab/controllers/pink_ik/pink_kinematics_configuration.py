@@ -58,7 +58,9 @@ class PinkKinematicsConfiguration(Configuration):
 
         # Build robot model with all joints
         if mesh_path:
-            self.robot_wrapper = RobotWrapper.BuildFromURDF(urdf_path, mesh_path)
+            # Pinocchio names this parameter ``package_dirs`` and expects a
+            # sequence even when there is only one ROS package search root.
+            self.robot_wrapper = RobotWrapper.BuildFromURDF(urdf_path, [mesh_path])
         else:
             self.robot_wrapper = RobotWrapper.BuildFromURDF(urdf_path)
         self.full_model = self.robot_wrapper.model

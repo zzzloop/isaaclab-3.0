@@ -323,8 +323,8 @@ def main() -> None:  # noqa: C901
                 f"The environment '{args_cli.task}' does not support gripper control. The device command will be"
                 " ignored."
             )
-    except Exception as e:
-        logger.error(f"Failed to create environment: {e}")
+    except Exception:
+        logger.exception("Failed to create environment")
         simulation_app.close()
         return
 
