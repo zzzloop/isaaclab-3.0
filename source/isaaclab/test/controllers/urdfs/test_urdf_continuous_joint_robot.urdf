@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+All rights reserved.
+
+SPDX-License-Identifier: BSD-3-Clause
+-->
+<robot name="test_continuous_joint_robot">
+    <link name="base_link"/>
+    <link name="wheel_link"/>
+    <link name="arm_link"/>
+    <joint name="wheel_joint" type="continuous">
+        <parent link="base_link"/>
+        <child link="wheel_link"/>
+        <axis xyz="0 1 0"/>
+        <limit effort="10" velocity="10"/>
+    </joint>
+    <joint name="arm_joint" type="revolute">
+        <parent link="wheel_link"/>
+        <child link="arm_link"/>
+        <origin xyz="0 0 0.2"/>
+        <axis xyz="0 0 1"/>
+        <limit effort="10" velocity="10" lower="-1.5" upper="1.5"/>
+    </joint>
+</robot>

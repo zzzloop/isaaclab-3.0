@@ -25,6 +25,8 @@ from amgg_robot_lab.teleop import (
     AM_DP123_LEFT_WRIST_TARGET_OFFSET_DEG,
     AM_DP123_RIGHT_WRIST_ACTION_ELEMENTS,
     AM_DP123_RIGHT_WRIST_TARGET_OFFSET_DEG,
+    AM_DP123_TRIGGER_DEADZONE,
+    am_dp123_trigger_to_gripper_command,
 )
 
 
@@ -64,6 +66,16 @@ def test_hand_trigger_indices_keep_left_and_right_independent():
     mapped_triggers = tuple(raw_triggers[index] for index in AM_DP123_HAND_ACTION_TRIGGER_INDEX)
     assert mapped_triggers[:2] == (AM_DP123_HAND_TRIGGER_OPEN,) * 2
     assert mapped_triggers[2:] == (-AM_DP123_HAND_TRIGGER_OPEN,) * 2
+
+
+def test_pico_trigger_maps_proportionally_without_hand_tracking():
+    """Released and pressed controller triggers span the complete hand command."""
+    assert am_dp123_trigger_to_gripper_command(0.0) == 1.0
+    assert am_dp123_trigger_to_gripper_command(AM_DP123_TRIGGER_DEADZONE) == 1.0
+    assert am_dp123_trigger_to_gripper_command(1.0) == -1.0
+    assert isclose(am_dp123_trigger_to_gripper_command((1.0 + AM_DP123_TRIGGER_DEADZONE) / 2.0), 0.0, abs_tol=1e-12)
+    assert am_dp123_trigger_to_gripper_command(-1.0) == 1.0
+    assert am_dp123_trigger_to_gripper_command(2.0) == -1.0
 
 
 def test_retargeter_offsets_are_finite_degrees():

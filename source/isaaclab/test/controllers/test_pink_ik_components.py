@@ -32,6 +32,11 @@ class TestPinkKinematicsConfiguration:
         return ""
 
     @pytest.fixture
+    def continuous_urdf_path(self):
+        """Path to a robot containing Pinocchio's two-value continuous joint."""
+        return Path(__file__).parent / "urdfs/test_urdf_continuous_joint_robot.urdf"
+
+    @pytest.fixture
     def controlled_joint_names(self):
         """List of controlled joint names for testing."""
         return ["joint_1", "joint_2"]
@@ -85,6 +90,24 @@ class TestPinkKinematicsConfiguration:
 
         assert pink_config.full_model is not None
         assert package_dirs == [[str(tmp_path)]]
+
+    def test_update_converts_continuous_joint_angle_to_pinocchio_configuration(self, continuous_urdf_path):
+        """Isaac's scalar continuous angle must become Pinocchio cosine and sine coordinates."""
+        pink_config = PinkKinematicsConfiguration(
+            urdf_path=str(continuous_urdf_path),
+            controlled_joint_names=["arm_joint"],
+        )
+
+        pink_config.update(np.array([0.5, -0.25]))
+
+        wheel = pink_config.full_model.joints[pink_config.full_model.getJointId("wheel_joint")]
+        arm = pink_config.full_model.joints[pink_config.full_model.getJointId("arm_joint")]
+        assert pink_config.full_model.nq == 3
+        assert np.isclose(pink_config.full_q[wheel.idx_q], np.cos(0.5))
+        assert np.isclose(pink_config.full_q[wheel.idx_q + 1], np.sin(0.5))
+        assert np.isclose(pink_config.full_q[arm.idx_q], -0.25)
+        assert np.allclose(pink_config.q, [-0.25])
+        assert pink_config.get_frame_jacobian("arm_link").shape == (6, 1)
 
     def test_joint_names_properties(self, pink_config):
         """Test joint name properties."""

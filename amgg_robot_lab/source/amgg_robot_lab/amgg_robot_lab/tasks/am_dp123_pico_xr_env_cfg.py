@@ -36,6 +36,9 @@ from amgg_robot_lab.teleop import AM_DP123_IDLE_ACTION, build_am_dp123_pico_pipe
 
 from . import mdp
 
+AM_DP123_TABLE_TOP_HEIGHT_M = 0.78
+AM_DP123_TABLE_THICKNESS_M = 0.08
+
 
 def _rigid_material(color: tuple[float, float, float]) -> dict:
     return {
@@ -83,13 +86,16 @@ class AmDp123SceneCfg(InteractiveSceneCfg):
     """AM-DP123 robot, workbench, lighting, and the four-camera rig."""
 
     robot = get_am_dp123_robot_cfg().replace(prim_path="{ENV_REGEX_NS}/Robot")
-    # Static slab: the wrists of this arm set reach down to about z = 0.70 m, so the
-    # table top sits at 0.60 m and the whole work area stays inside the reach box.
+    # The tabletop is close to a standard standing workbench height and leaves
+    # the home wrists roughly 0.17 m above the manipulation surface.
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.84, 0.0, 0.56), rot=(0.0, 0.0, 0.0, 1.0)),
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=(0.84, 0.0, AM_DP123_TABLE_TOP_HEIGHT_M - AM_DP123_TABLE_THICKNESS_M / 2.0),
+            rot=(0.0, 0.0, 0.0, 1.0),
+        ),
         spawn=sim_utils.CuboidCfg(
-            size=(1.00, 1.20, 0.08),
+            size=(1.00, 1.20, AM_DP123_TABLE_THICKNESS_M),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.30, 0.32, 0.36), roughness=0.85),
             physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=1.1, dynamic_friction=0.9),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
@@ -97,12 +103,14 @@ class AmDp123SceneCfg(InteractiveSceneCfg):
     )
     cube = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Cube",
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.46, 0.10, 0.625), rot=(0.0, 0.0, 0.0, 1.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.46, 0.10, AM_DP123_TABLE_TOP_HEIGHT_M + 0.025), rot=(0.0, 0.0, 0.0, 1.0)
+        ),
         spawn=sim_utils.CuboidCfg(size=(0.05, 0.05, 0.05), **_rigid_material((0.95, 0.45, 0.05))),
     )
     place_target = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/PlaceTarget",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.46, -0.10, 0.604)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.46, -0.10, AM_DP123_TABLE_TOP_HEIGHT_M + 0.004)),
         spawn=_target_marker((0.09, 0.09, 0.008), (0.10, 0.85, 0.22)),
     )
     ground = AssetBaseCfg(
@@ -260,7 +268,7 @@ class TerminationsCfg:
 
     cube_dropped = DoneTerm(
         func=base_mdp.root_height_below_minimum,
-        params={"minimum_height": 0.30, "asset_cfg": SceneEntityCfg("cube")},
+        params={"minimum_height": 0.45, "asset_cfg": SceneEntityCfg("cube")},
     )
 
 

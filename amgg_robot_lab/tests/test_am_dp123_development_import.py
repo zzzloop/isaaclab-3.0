@@ -57,6 +57,8 @@ def test_pipeline_builder_defers_its_runtime_imports():
 
     source = inspect.getsource(am_dp123_pico_pipeline.build_am_dp123_pico_pipeline)
     assert "from isaacteleop" in source
+    assert "HandsSource" not in source
+    assert "ControllerTriggerRetargeter" in source
     assert "isaacteleop" not in sys.modules
 
 

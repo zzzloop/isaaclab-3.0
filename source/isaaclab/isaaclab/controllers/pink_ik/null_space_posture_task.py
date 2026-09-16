@@ -128,16 +128,17 @@ class NullSpacePostureTask(Task):
         Args:
             configuration: Robot configuration containing the model and joint information.
         """
-        # Create joint mask for full configuration size
-        self._joint_mask = np.zeros(configuration.model.nq)
+        # Create the mask in tangent/velocity space, matching ``pin.difference``.
+        self._joint_mask = np.zeros(configuration.model.nv)
 
         # Create dictionary for joint names to indices (exclude root joint)
         joint_names = configuration.model.names.tolist()[1:]
 
         # Build joint mask efficiently
-        for i, joint_name in enumerate(joint_names):
+        for joint_name in joint_names:
             if joint_name in self.controlled_joints:
-                self._joint_mask[i] = 1.0
+                joint = configuration.model.joints[configuration.model.getJointId(joint_name)]
+                self._joint_mask[joint.idx_v : joint.idx_v + joint.nv] = 1.0
 
         # Cache frame names for performance
         self._frame_names = list(self.controlled_frames)
@@ -227,7 +228,7 @@ class NullSpacePostureTask(Task):
 
         Returns:
             Null space projector matrix :math:`\mathbf{N}(\mathbf{q})` with dimensions
-            :math:`n_q \times n_q` where :math:`n_q` is the number of configuration variables.
+            :math:`n_v \times n_v` where :math:`n_v` is the number of velocity variables.
         """
         # Initialize joint mapping if needed
         if self._frame_names is None:

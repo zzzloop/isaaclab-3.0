@@ -73,6 +73,11 @@ class PinkKinematicsConfiguration(Configuration):
         self._controlled_joint_indices = [
             idx for idx, joint_name in enumerate(self._all_joint_names) if joint_name in self._controlled_joint_names
         ]
+        self._controlled_velocity_indices = [
+            velocity_index
+            for joint_name in self.controlled_joint_names_pinocchio_order
+            for velocity_index in self._joint_velocity_indices(self.full_model, joint_name)
+        ]
 
         # Build the reduced model with only the controlled joints
         joints_to_lock = []
@@ -88,7 +93,7 @@ class PinkKinematicsConfiguration(Configuration):
         else:
             self.controlled_model = pin.buildReducedModel(self.full_model, joints_to_lock, self.full_q)
             self.controlled_data = self.controlled_model.createData()
-            self.controlled_q = self.full_q[self._controlled_joint_indices]
+            self.controlled_q = pin.neutral(self.controlled_model)
 
         # Pink will should only have the controlled model
         super().__init__(self.controlled_model, self.controlled_data, self.controlled_q, copy_data, forward_kinematics)
@@ -105,17 +110,62 @@ class PinkKinematicsConfiguration(Configuration):
         if q is not None and len(q) != len(self._all_joint_names):
             raise ValueError("q must have the same length as the number of joints in the model")
         if q is not None:
-            super().update(q[self._controlled_joint_indices])
+            joint_positions = np.asarray(q, dtype=np.float64)
+            controlled_joint_positions = joint_positions[self._controlled_joint_indices]
+            controlled_q = self._configuration_from_joint_positions(
+                self.controlled_model,
+                self.controlled_joint_names_pinocchio_order,
+                controlled_joint_positions,
+            )
+            full_q = self._configuration_from_joint_positions(
+                self.full_model,
+                self._all_joint_names,
+                joint_positions,
+            )
+            super().update(controlled_q)
 
-            q_readonly = q.copy()
+            q_readonly = full_q.copy()
             q_readonly.setflags(write=False)
             self.full_q = q_readonly
-            pin.computeJointJacobians(self.full_model, self.full_data, q)
+            self.controlled_q = controlled_q
+            pin.computeJointJacobians(self.full_model, self.full_data, full_q)
             pin.updateFramePlacements(self.full_model, self.full_data)
         else:
             super().update()
             pin.computeJointJacobians(self.full_model, self.full_data, self.full_q)
             pin.updateFramePlacements(self.full_model, self.full_data)
+
+    @staticmethod
+    def _joint_velocity_indices(model: pin.Model, joint_name: str) -> range:
+        """Return velocity-vector indices for one Pinocchio joint."""
+        joint = model.joints[model.getJointId(joint_name)]
+        return range(joint.idx_v, joint.idx_v + joint.nv)
+
+    @staticmethod
+    def _configuration_from_joint_positions(
+        model: pin.Model, joint_names: list[str], joint_positions: np.ndarray
+    ) -> np.ndarray:
+        """Convert scalar simulator joint positions to a Pinocchio configuration.
+
+        Isaac Lab stores one angle for a continuous revolute joint, while
+        Pinocchio represents that joint with ``[cos(angle), sin(angle)]``. Other
+        one-DoF joints use one configuration value.
+        """
+        configuration = pin.neutral(model)
+        for joint_name, position in zip(joint_names, joint_positions, strict=True):
+            joint = model.joints[model.getJointId(joint_name)]
+            if joint.nv != 1:
+                raise ValueError(
+                    f"Joint '{joint_name}' has {joint.nv} velocity DoF; expected a one-DoF Isaac Lab joint."
+                )
+            if joint.nq == 1:
+                configuration[joint.idx_q] = position
+            elif joint.nq == 2:
+                configuration[joint.idx_q] = np.cos(position)
+                configuration[joint.idx_q + 1] = np.sin(position)
+            else:
+                raise ValueError(f"Joint '{joint_name}' has unsupported Pinocchio configuration size {joint.nq}.")
+        return configuration
 
     def get_frame_jacobian(self, frame: str) -> np.ndarray:
         r"""Compute the Jacobian matrix of a frame velocity.
@@ -148,7 +198,7 @@ class PinkKinematicsConfiguration(Configuration):
             raise FrameNotFound(frame, self.full_model.frames)
         frame_id = self.full_model.getFrameId(frame)
         J: np.ndarray = pin.getFrameJacobian(self.full_model, self.full_data, frame_id, pin.ReferenceFrame.LOCAL)
-        return J[:, self._controlled_joint_indices]
+        return J[:, self._controlled_velocity_indices]
 
     def get_transform_frame_to_world(self, frame: str) -> pin.SE3:
         """Get the pose of a frame in the current configuration.

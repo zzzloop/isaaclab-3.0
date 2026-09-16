@@ -61,9 +61,9 @@ uv run python amgg_robot_lab/scripts/amgg_teleop.py \
     --task Isaac-AM-DP123-Pico-XR-v0 --viz none \
     --cloudxr_env none --no-auto_launch_cloudxr
 
-# PICO + CloudXR：必须保留外部相机（XR 图像面板复用这 4 路相机）
+# PICO + CloudXR 无头运行：必须保留外部相机（XR 图像面板复用这 4 路相机）
 uv run python amgg_robot_lab/scripts/amgg_teleop.py \
-    --task Isaac-AM-DP123-Pico-XR-v0 --xr --cloudxr_env cloudxrjs --viz kit
+    --task Isaac-AM-DP123-Pico-XR-v0 --xr --cloudxr_env cloudxrjs --viz none
 ```
 
 `amgg_teleop.py` 会先把扩展源码目录加入 `sys.path`，再拒绝重复传入 `--external_callback`，因为它要占用该参数注册
@@ -145,9 +145,8 @@ home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器
 
 `build_am_dp123_pico_pipeline()` 返回 `(OutputCombiner, retargeters)`：
 
-1. `ControllersSource` → `Se3AbsRetargeter`（左右腕绝对位姿，`use_wrist_rotation/position=False`
-   以便没有手部追踪的头显也能用）。
-2. 同一路控制器 + `HandsSource` → `GripperRetargeter`（触发量 +1 张开 / −1 握紧）。
+1. `ControllersSource` → `Se3AbsRetargeter`，输出左右腕绝对位姿。
+2. 左右手柄模拟扳机直接输出连续夹爪命令，不创建 PICO 不支持的 OpenXR HandTracker。
 3. `TensorReorderer` 按 `AM_DP123_ACTION_LAYOUT` 输出 18 维动作。
 4. 动作进入 `AmDp123PinkInverseKinematicsAction`：先把手部触发映射成手指关节目标，
    再交给官方 Pink 求解器；`_raw_actions` 保留 PICO 原始 ABI 以便诊断与录制。
@@ -159,7 +158,7 @@ home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器
 
 `AmDp123PicoXrEnvCfg`（任务 `Isaac-AM-DP123-Pico-XR-v0`）要点：
 
-* 场景：AM-DP123 机器人 + 0.60 m 高工作台 + 5 cm 方块 + 放置标记 + 地面 + 两盏灯，
+* 场景：AM-DP123 机器人 + 0.78 m 高工作台 + 5 cm 方块 + 放置标记 + 地面 + 两盏灯，
   以及上述 4 路相机（相机父链接由契约给出，因此相机跟随对应的真实连杆）。
 * 动作：`mdp.AmDp123PinkInverseKinematicsActionCfg`，`pink_controlled_joint_names`
   为 14 个臂关节，`target_eef_link_names` 为左右腕，开启重力补偿；
@@ -193,7 +192,7 @@ home 姿态：腕部目标位于 `base_link` 下 (0.36, ±0.20, 0.88) m，机器
 
 ```bash
 cd amgg_robot_lab
-uv run --no-project --with pytest --with numpy python -m pytest -q   # 48 passed
+uv run --no-project --with pytest --with numpy python -m pytest -q   # 50 passed
 uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff ruff format --check .
 ```
 
@@ -202,7 +201,8 @@ uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff 
 1. `./isaaclab.sh -i teleop`，并确认 `import pink, pinocchio, isaacteleop` 成功。
 2. 无头冒烟：`uv run python amgg_robot_lab/scripts/amgg_teleop.py --task Isaac-AM-DP123-Pico-XR-v0 --viz none --cloudxr_env none --no-auto_launch_cloudxr`
    （确认资产导入、Pink 控制器构建、4 路相机创建成功）。
-3. XR：加 `--xr --cloudxr_env cloudxrjs --viz kit`，**不要**加 `--disable_external_cameras`。
+3. XR：加 `--xr --cloudxr_env cloudxrjs --viz none`，**不要**加 `--disable_external_cameras`。
+   正常遥操不要加 `--enable_debug_visualization`；该参数会在 PICO 画面中加入手柄坐标轴和手部标记。
    先确认机器人正立、左右相机图像方向正确，再分别闭合左右扳机确认两只手互不串扰。
 4. 用手柄实测并微调腕部对齐：`AM_DP123_LEFT_WRIST_TARGET_OFFSET_DEG` /
    `AM_DP123_RIGHT_WRIST_TARGET_OFFSET_DEG`（也可通过 IsaacTeleop 的 retargeter 调参 UI 实时调整）。

@@ -52,6 +52,9 @@ AM_DP123_ACTION_LAYOUT: tuple[str, ...] = (
 AM_DP123_LEFT_WRIST_TARGET_OFFSET_DEG: tuple[float, float, float] = (90.0, 0.0, 0.0)
 AM_DP123_RIGHT_WRIST_TARGET_OFFSET_DEG: tuple[float, float, float] = (-90.0, 0.0, 180.0)
 
+AM_DP123_TRIGGER_DEADZONE = 0.05
+"""Released-end PICO trigger deadzone before proportional hand closure begins."""
+
 AM_DP123_IDLE_ACTION: tuple[float, ...] = (
     0.36,
     0.2,
@@ -82,6 +85,13 @@ uses this value when no recorded action buffer is available.
 """
 
 
+def am_dp123_trigger_to_gripper_command(trigger: float) -> float:
+    """Map a PICO analog trigger to the AM-DP123 ``+1`` open / ``-1`` closed command."""
+    closed_fraction = (float(trigger) - AM_DP123_TRIGGER_DEADZONE) / (1.0 - AM_DP123_TRIGGER_DEADZONE)
+    closed_fraction = min(max(closed_fraction, 0.0), 1.0)
+    return 1.0 - 2.0 * closed_fraction
+
+
 def build_am_dp123_pico_pipeline() -> tuple[OutputCombiner, list[BaseRetargeter]]:
     """Build the 18-D dual-wrist and two-jaw hand action graph.
 
@@ -90,18 +100,45 @@ def build_am_dp123_pico_pipeline() -> tuple[OutputCombiner, list[BaseRetargeter]
         wrist retargeters that the tuning UI should expose.
     """
     from isaacteleop.retargeters import (
-        GripperRetargeter,
-        GripperRetargeterConfig,
         Se3AbsRetargeter,
         Se3RetargeterConfig,
         TensorReorderer,
     )
-    from isaacteleop.retargeting_engine.deviceio_source_nodes import ControllersSource, HandsSource
-    from isaacteleop.retargeting_engine.interface import OutputCombiner, ValueInput
-    from isaacteleop.retargeting_engine.tensor_types import TransformMatrix
+    from isaacteleop.retargeting_engine.deviceio_source_nodes import ControllersSource
+    from isaacteleop.retargeting_engine.interface import BaseRetargeter, OutputCombiner, ValueInput
+    from isaacteleop.retargeting_engine.interface.tensor_group_type import OptionalType, TensorGroupType
+    from isaacteleop.retargeting_engine.tensor_types import (
+        ControllerInput,
+        ControllerInputIndex,
+        FloatType,
+        TransformMatrix,
+    )
+
+    class ControllerTriggerRetargeter(BaseRetargeter):
+        """Controller-only proportional gripper input that requires no HandTracker."""
+
+        def __init__(self, input_device: str, name: str) -> None:
+            self._input_device = input_device
+            self._last_command = 1.0
+            super().__init__(name=name)
+
+        def input_spec(self):
+            return {self._input_device: OptionalType(ControllerInput())}
+
+        def output_spec(self):
+            return {"gripper_command": TensorGroupType("gripper_command", [FloatType("command")])}
+
+        def _compute_fn(self, inputs, outputs, context) -> None:
+            if context.execution_events.reset:
+                self._last_command = 1.0
+            controller = inputs[self._input_device]
+            if not controller.is_none:
+                self._last_command = am_dp123_trigger_to_gripper_command(
+                    float(controller[ControllerInputIndex.TRIGGER_VALUE])
+                )
+            outputs["gripper_command"][0] = self._last_command
 
     controllers = ControllersSource(name="controllers")
-    hands = HandsSource(name="hands")
     transform_input = ValueInput("world_T_anchor", TransformMatrix())
     transformed_controllers = controllers.transformed(transform_input.output(ValueInput.VALUE))
 
@@ -138,19 +175,13 @@ def build_am_dp123_pico_pipeline() -> tuple[OutputCombiner, list[BaseRetargeter]
         {ControllersSource.RIGHT: transformed_controllers.output(ControllersSource.RIGHT)}
     )
 
-    left_gripper = GripperRetargeter(GripperRetargeterConfig(hand_side="left"), name="left_gripper")
-    right_gripper = GripperRetargeter(GripperRetargeterConfig(hand_side="right"), name="right_gripper")
+    left_gripper = ControllerTriggerRetargeter(ControllersSource.LEFT, name="left_gripper")
+    right_gripper = ControllerTriggerRetargeter(ControllersSource.RIGHT, name="right_gripper")
     connected_left_gripper = left_gripper.connect(
-        {
-            ControllersSource.LEFT: transformed_controllers.output(ControllersSource.LEFT),
-            HandsSource.LEFT: hands.output(HandsSource.LEFT),
-        }
+        {ControllersSource.LEFT: transformed_controllers.output(ControllersSource.LEFT)}
     )
     connected_right_gripper = right_gripper.connect(
-        {
-            ControllersSource.RIGHT: transformed_controllers.output(ControllersSource.RIGHT),
-            HandsSource.RIGHT: hands.output(HandsSource.RIGHT),
-        }
+        {ControllersSource.RIGHT: transformed_controllers.output(ControllersSource.RIGHT)}
     )
 
     reorderer = TensorReorderer(

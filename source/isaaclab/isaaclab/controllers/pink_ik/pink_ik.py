@@ -123,6 +123,7 @@ class PinkIKController:
         )
         self.init_joint_positions = np.zeros(len(pink_joint_names))
         self.init_joint_positions[indices] = np.array(values)
+        self.pink_configuration.update(self.init_joint_positions)
         self._variable_input_tasks = [task_cfg.class_type(task_cfg) for task_cfg in cfg.variable_input_tasks]
         self._fixed_input_tasks = [task_cfg.class_type(task_cfg) for task_cfg in cfg.fixed_input_tasks]
         self.cfg.variable_input_tasks = cast(list[Task | PinkIKTaskCfg], self._variable_input_tasks)
@@ -131,7 +132,7 @@ class PinkIKController:
         for task in self._variable_input_tasks:
             # If task is a NullSpacePostureTask, set the target to the initial joint positions
             if isinstance(task, NullSpacePostureTask):
-                task.set_target(self.init_joint_positions)
+                task.set_target(self.pink_configuration.q)
                 continue
             getattr(task, "set_target_from_configuration")(self.pink_configuration)
         for task in self._fixed_input_tasks:
