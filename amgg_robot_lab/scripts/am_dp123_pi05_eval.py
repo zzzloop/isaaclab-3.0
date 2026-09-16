@@ -102,9 +102,15 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
     import amgg_robot_lab.tasks  # noqa: F401  (registers the task ids)
     from amgg_robot_lab.tasks.am_dp123_pi05_env_cfg import AM_DP123_PI05_CONTROL_DT, AmDp123Pi05EvalEnvCfg
 
+    print(
+        f"[pi05] starting task={args_cli.task} policy={args_cli.policy} max_steps={args_cli.max_steps} "
+        f"device={args_cli.device} viz={args_cli.visualizer}",
+        flush=True,
+    )
     env_cfg = AmDp123Pi05EvalEnvCfg()
     env_cfg.sim.device = args_cli.device
     env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
+    print("[pi05] environment ready", flush=True)
 
     layout = (
         load_default_action_layout() if args_cli.action_layout is None else load_action_layout(args_cli.action_layout)
@@ -124,7 +130,8 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
     print(
         f"[pi05] task={args_cli.task} policy={args_cli.policy} layout={layout.path} "
         f"model_action_dim={layout.model_action_dim} control_dt={AM_DP123_PI05_CONTROL_DT:.4f}s "
-        f"record_root={record_root}"
+        f"record_root={record_root}",
+        flush=True,
     )
 
     total_steps = 0
@@ -165,7 +172,7 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
                         targets = adapter.adapt(chunk)
                     except Exception as exc:
                         consecutive_failures += 1
-                        print(f"[pi05] inference failure {consecutive_failures}: {exc}")
+                        print(f"[pi05] inference failure {consecutive_failures}: {exc}", flush=True)
                         if consecutive_failures >= MAX_CONSECUTIVE_INFERENCE_FAILURES:
                             exit_reason = "inference_failed"
                             episode_reason = "inference_failed"
@@ -209,7 +216,10 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
         if exit_reason == "inference_failed" or total_steps >= args_cli.max_steps:
             break
 
-    print(f"[pi05] finished after {total_steps} steps, {episode_index} episode(s), reason={exit_reason}")
+    print(
+        f"[pi05] finished after {total_steps} steps, {episode_index} episode(s), reason={exit_reason}",
+        flush=True,
+    )
     env.close()
 
 
@@ -260,7 +270,7 @@ def _make_remote_image_transform():
 def _log_payload(payload: Mapping[str, Any]) -> None:
     """Print the OpenPI payload keys and shapes for the first episode."""
     summary = {key: getattr(value, "shape", type(value).__name__) for key, value in payload.items()}
-    print(f"[pi05] OpenPI payload: {summary}")
+    print(f"[pi05] OpenPI payload: {summary}", flush=True)
 
 
 def _record_root(args_cli: argparse.Namespace) -> Path:
@@ -395,7 +405,7 @@ class _EpisodeRecorder:
             for name in AM_DP123_PI05_REQUIRED_CAMERAS:
                 image_arrays[f"image_{name}"] = np.stack([frame[name] for _, frame in self._images])
             np.savez_compressed(directory / f"{stem}_images.npz", **image_arrays)
-        print(f"[pi05] wrote {stem} with {self._step} steps to {directory}")
+        print(f"[pi05] wrote {stem} with {self._step} steps to {directory}", flush=True)
 
 
 def main() -> None:
