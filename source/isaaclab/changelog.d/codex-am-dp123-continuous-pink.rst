@@ -1,4 +1,4 @@
 Fixed
 ^^^^^
 
-* Fixed Pink IK configuration and Jacobian mappings for robots with continuous joints.
+* Fixed Pink IK configuration, initial-state, and Jacobian mappings for robots with continuous or uncontrolled joints.

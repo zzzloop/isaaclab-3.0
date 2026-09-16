@@ -13,6 +13,7 @@ import pytest
 from pink.exceptions import FrameNotFound
 from pinocchio.robot_wrapper import RobotWrapper
 
+from isaaclab.controllers.pink_ik.pink_ik import PinkIKController
 from isaaclab.controllers.pink_ik.pink_kinematics_configuration import PinkKinematicsConfiguration
 
 pytestmark = pytest.mark.integration
@@ -341,3 +342,21 @@ class TestPinkKinematicsConfiguration:
         assert len(test_model.full_q) > len(test_model.controlled_q)
         assert len(test_model.full_q) == len(test_model.all_joint_names_pinocchio_order)
         assert len(test_model.controlled_q) == len(test_model.controlled_joint_names_pinocchio_order)
+
+    def test_undercontrolled_initial_configuration_uses_all_joints(self, urdf_path, mesh_path):
+        """Test controller initialization against an undercontrolled kinematics model."""
+        test_model = PinkKinematicsConfiguration(
+            urdf_path=str(urdf_path),
+            mesh_path=mesh_path,
+            controlled_joint_names=["joint_1"],
+            copy_data=True,
+            forward_kinematics=True,
+        )
+        controller = PinkIKController.__new__(PinkIKController)
+        controller.pink_configuration = test_model
+
+        initial_q = controller._resolve_initial_joint_positions({"joint_1": 0.25, "joint_2": -0.5})
+
+        assert len(initial_q) == len(test_model.all_joint_names_pinocchio_order)
+        test_model.update(initial_q)
+        assert np.allclose(test_model.full_q, [0.25, -0.5])

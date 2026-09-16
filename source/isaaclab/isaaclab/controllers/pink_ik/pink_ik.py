@@ -111,18 +111,7 @@ class PinkIKController:
             controlled_joint_names=cfg.joint_names,
         )
 
-        # Find the initial joint positions by matching Pink's joint names to robot_cfg.init_state.joint_pos,
-        # where the joint_pos keys may be regex patterns and the values are the initial positions.
-        # We want to assign to each Pink joint name the value from the first matching regex key in joint_pos.
-        pink_joint_names = self.pink_configuration.model.names.tolist()[1:]
-        joint_pos_dict = robot_cfg.init_state.joint_pos
-
-        # Use resolve_matching_names_values to match Pink joint names to joint_pos values
-        indices, _, values = resolve_matching_names_values(
-            joint_pos_dict, pink_joint_names, preserve_order=False, strict=False
-        )
-        self.init_joint_positions = np.zeros(len(pink_joint_names))
-        self.init_joint_positions[indices] = np.array(values)
+        self.init_joint_positions = self._resolve_initial_joint_positions(robot_cfg.init_state.joint_pos)
         self.pink_configuration.update(self.init_joint_positions)
         self._variable_input_tasks = [task_cfg.class_type(task_cfg) for task_cfg in cfg.variable_input_tasks]
         self._fixed_input_tasks = [task_cfg.class_type(task_cfg) for task_cfg in cfg.fixed_input_tasks]
@@ -140,6 +129,19 @@ class PinkIKController:
 
         # Create joint ordering mappings
         self._setup_joint_ordering_mappings()
+
+    def _resolve_initial_joint_positions(self, joint_pos: dict[str, float]) -> np.ndarray:
+        """Resolve the full URDF joint configuration from an articulation initial-state mapping."""
+        # ``PinkKinematicsConfiguration.update`` consumes the full URDF configuration. The inherited
+        # ``model`` is the reduced controlled model, so using ``model.names`` here drops every locked
+        # joint and produces a vector with the wrong length for underactuated controllers.
+        pink_joint_names = self.pink_configuration.all_joint_names_pinocchio_order
+        indices, _, values = resolve_matching_names_values(
+            joint_pos, pink_joint_names, preserve_order=False, strict=False
+        )
+        initial_joint_positions = np.zeros(len(pink_joint_names))
+        initial_joint_positions[indices] = np.asarray(values)
+        return initial_joint_positions
 
     def _validate_consistency(self, cfg: PinkIKControllerCfg, controlled_joint_indices: list[int]) -> None:
         """Validate consistency between controlled_joint_indices and controller configuration.
