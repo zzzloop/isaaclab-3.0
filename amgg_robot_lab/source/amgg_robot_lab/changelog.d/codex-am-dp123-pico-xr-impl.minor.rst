@@ -32,6 +32,15 @@ Added
 Fixed
 ^^^^^
 
+* Fixed the PI0.5 task dependency boundary so importing it no longer loads the
+  PICO, Pink IK, or IsaacTeleop stack.
+
+* Fixed PI0.5 episode recording to preserve terminal observations and distinguish
+  held safety targets from valid model output.
+
+* Fixed the missing episode acceptance path by adding offline validation and
+  simulator replay for recorded PI0.5 joint targets.
+
 * Fixed the Isaac Lab 3.0 base quaternion so the AM-DP123 starts upright.
 * Fixed right-hand trigger routing.
 * Fixed PICO arm control by rebasing controller motion at Play, targeting the

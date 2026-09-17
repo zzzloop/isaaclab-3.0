@@ -20,7 +20,9 @@ import json
 import math
 import subprocess
 import sys
+from collections import deque
 from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -58,6 +60,48 @@ _MOCK_SINE_AMPLITUDE_RAD = (0.10, 0.08, 0.08, 0.05, 0.10, 0.08, 0.08, 0.05)
 _MOCK_SINE_FREQUENCY_HZ = 0.25
 
 
+@dataclass(frozen=True, slots=True)
+class _PendingAction:
+    """One model action and the bounded target that will be applied next."""
+
+    model_action: np.ndarray
+    target: np.ndarray
+    inference_valid: bool
+    inference_error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class _EpisodeStep:
+    """All data associated with one applied control step."""
+
+    joint_pos: np.ndarray
+    joint_vel: np.ndarray
+    object_position: np.ndarray
+    model_action: np.ndarray
+    target: np.ndarray
+    terminated: bool
+    truncated: bool
+    inference_valid: bool
+    inference_error: str
+    images: Mapping[str, np.ndarray] | None = None
+
+
+def _positive_int(value: str) -> int:
+    """Parse a strictly positive integer CLI value."""
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("value must be at least 1")
+    return parsed
+
+
+def _nonnegative_int(value: str) -> int:
+    """Parse a nonnegative integer CLI value."""
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be nonnegative")
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser without any Isaac Sim import."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -82,15 +126,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--action_horizon",
-        type=int,
+        type=_nonnegative_int,
         default=0,
         help="Maximum chunk rows to execute per inference. 0 uses the whole returned chunk.",
     )
-    parser.add_argument("--max_steps", type=int, default=120, help="Total control steps to run across all episodes.")
+    parser.add_argument(
+        "--max_steps", type=_positive_int, default=120, help="Total control steps to run across all episodes."
+    )
     parser.add_argument("--record_dir", default=None, help="Override the episode output directory.")
     parser.add_argument("--record_images", action="store_true", help="Also record the four cameras (bounded).")
     parser.add_argument("--no_record", action="store_true", help="Disable episode recording entirely.")
-    parser.add_argument("--image_stride", type=int, default=15, help="Record one image frame every N steps.")
+    parser.add_argument("--image_stride", type=_positive_int, default=15, help="Record one image frame every N steps.")
     return parser
 
 
@@ -137,70 +183,90 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
     total_steps = 0
     episode_index = 0
     exit_reason = "max_steps_reached"
+    payload_logged = False
+    obs, _ = env.reset()
     while total_steps < args_cli.max_steps:
-        obs, _ = env.reset()
         policy_obs = obs["policy"]
         state = as_numpy(policy_obs["robot_joint_pos"][0])
         adapter.reset(state[list(state_indices)])
         sine_base = adapter.current_target
 
-        if episode_index == 0:
-            _log_payload(build_pi05_observation(*_observation_inputs(policy_obs), args_cli.prompt, image_transform))
-
         recorder = _EpisodeRecorder(
             record_images=args_cli.record_images and record_root is not None,
             image_stride=args_cli.image_stride,
         )
-        pending: list[tuple[np.ndarray, np.ndarray]] = []
+        pending: deque[_PendingAction] = deque()
         consecutive_failures = 0
         episode_reason = "max_steps_reached"
 
         while True:
             if not pending:
-                if policy is None:
-                    model_action = _mock_action(
-                        args_cli.policy, sine_base, len(recorder), state_indices, policy_obs, AM_DP123_PI05_CONTROL_DT
-                    )
-                    target = adapter.adapt(model_action)[0]
-                    pending.append((model_action, target))
-                else:
+                try:
                     payload = build_pi05_observation(*_observation_inputs(policy_obs), args_cli.prompt, image_transform)
-                    try:
+                    if not payload_logged:
+                        _log_payload(payload)
+                        payload_logged = True
+                    if policy is None:
+                        chunk = _mock_action(
+                            args_cli.policy,
+                            sine_base,
+                            len(recorder),
+                            state_indices,
+                            policy_obs,
+                            AM_DP123_PI05_CONTROL_DT,
+                        )[None, :]
+                    else:
                         chunk = as_numpy(policy.infer(payload)["actions"]).astype(np.float64, copy=False)
+                        if chunk.ndim == 1:
+                            chunk = chunk[None, :]
                         if args_cli.action_horizon > 0:
                             chunk = chunk[: args_cli.action_horizon]
-                        targets = adapter.adapt(chunk)
-                    except Exception as exc:
-                        consecutive_failures += 1
-                        print(f"[pi05] inference failure {consecutive_failures}: {exc}", flush=True)
-                        if consecutive_failures >= MAX_CONSECUTIVE_INFERENCE_FAILURES:
-                            exit_reason = "inference_failed"
-                            episode_reason = "inference_failed"
-                            break
-                        hold_action = np.zeros(layout.model_action_dim, dtype=np.float64)
-                        pending.append((hold_action, adapter.current_target.copy()))
-                    else:
-                        consecutive_failures = 0
-                        pending.extend(zip(chunk, targets, strict=True))
+                    targets = adapter.adapt(chunk)
+                except Exception as exc:
+                    consecutive_failures += 1
+                    error = f"{type(exc).__name__}: {exc}"
+                    print(f"[pi05] protocol/inference failure {consecutive_failures}: {error}", flush=True)
+                    if consecutive_failures >= MAX_CONSECUTIVE_INFERENCE_FAILURES:
+                        exit_reason = "inference_failed"
+                        episode_reason = "inference_failed"
+                        break
+                    pending.append(
+                        _PendingAction(
+                            model_action=np.zeros(layout.model_action_dim, dtype=np.float64),
+                            target=adapter.current_target,
+                            inference_valid=False,
+                            inference_error=error,
+                        )
+                    )
+                else:
+                    consecutive_failures = 0
+                    pending.extend(
+                        _PendingAction(model_action=raw, target=target, inference_valid=True)
+                        for raw, target in zip(chunk, targets, strict=True)
+                    )
 
-            raw_action, target = pending.pop(0)
-            action_tensor = torch.tensor(target, dtype=torch.float32, device=env.device).unsqueeze(0)
-            obs, _, terminated, truncated, _ = env.step(action_tensor)
+            pending_action = pending.popleft()
+            action_tensor = torch.tensor(pending_action.target, dtype=torch.float32, device=env.device).unsqueeze(0)
+            obs, _, terminated, truncated, extras = env.step(action_tensor)
             policy_obs = obs["policy"]
             total_steps += 1
 
             done_terminated = bool(as_numpy(terminated)[0])
             done_truncated = bool(as_numpy(truncated)[0])
-            images = _observation_images(policy_obs) if recorder.records_images else None
+            record_policy_obs = _record_policy_observation(policy_obs, extras, done_terminated or done_truncated)
             recorder.append(
-                joint_pos=as_numpy(policy_obs["robot_joint_pos"][0]),
-                joint_vel=as_numpy(policy_obs["robot_joint_vel"][0]),
-                object_position=as_numpy(policy_obs["object_position"][0]),
-                model_action=raw_action,
-                target=target,
-                terminated=done_terminated,
-                truncated=done_truncated,
-                images=images,
+                _EpisodeStep(
+                    joint_pos=as_numpy(record_policy_obs["robot_joint_pos"][0]),
+                    joint_vel=as_numpy(record_policy_obs["robot_joint_vel"][0]),
+                    object_position=as_numpy(record_policy_obs["object_position"][0]),
+                    model_action=pending_action.model_action,
+                    target=pending_action.target,
+                    terminated=done_terminated,
+                    truncated=done_truncated,
+                    inference_valid=pending_action.inference_valid,
+                    inference_error=pending_action.inference_error,
+                    images=_observation_images(record_policy_obs) if recorder.records_images else None,
+                )
             )
 
             if done_terminated or done_truncated:
@@ -235,6 +301,21 @@ def _observation_inputs(policy_obs: Mapping[str, Any]) -> tuple[np.ndarray, np.n
 def _observation_images(policy_obs: Mapping[str, Any]) -> dict[str, np.ndarray]:
     """Return the four camera observations keyed by contract camera name."""
     return {name: as_numpy(policy_obs[f"image_{name}"][0]) for name in AM_DP123_PI05_REQUIRED_CAMERAS}
+
+
+def _record_policy_observation(
+    policy_obs: Mapping[str, Any], extras: Mapping[str, Any], done: bool
+) -> Mapping[str, Any]:
+    """Return the terminal policy observation on done, otherwise the regular observation."""
+    if not done:
+        return policy_obs
+    final_obs = extras.get("final_obs")
+    if not isinstance(final_obs, Mapping) or "policy" not in final_obs:
+        raise RuntimeError("The PI0.5 environment terminated without extras['final_obs']; recording would be invalid.")
+    final_policy_obs = final_obs["policy"]
+    if not isinstance(final_policy_obs, Mapping):
+        raise RuntimeError("extras['final_obs']['policy'] is not an observation mapping.")
+    return final_policy_obs
 
 
 def _mock_action(
@@ -330,15 +411,8 @@ class _EpisodeRecorder:
     def __init__(self, record_images: bool, image_stride: int):
         self._record_images = record_images
         self._image_stride = max(1, image_stride)
-        self._joint_pos: list[np.ndarray] = []
-        self._joint_vel: list[np.ndarray] = []
-        self._object_position: list[np.ndarray] = []
-        self._model_action: list[np.ndarray] = []
-        self._target: list[np.ndarray] = []
-        self._terminated: list[bool] = []
-        self._truncated: list[bool] = []
-        self._images: list[tuple[int, dict[str, np.ndarray]]] = []
-        self._step = 0
+        self._steps: list[_EpisodeStep] = []
+        self._recorded_image_frames = 0
 
     @property
     def records_images(self) -> bool:
@@ -347,65 +421,63 @@ class _EpisodeRecorder:
 
     def __len__(self) -> int:
         """Number of control steps recorded so far."""
-        return self._step
+        return len(self._steps)
 
-    def append(
-        self,
-        joint_pos: np.ndarray,
-        joint_vel: np.ndarray,
-        object_position: np.ndarray,
-        model_action: np.ndarray,
-        target: np.ndarray,
-        terminated: bool,
-        truncated: bool,
-        images: Mapping[str, np.ndarray] | None,
-    ) -> None:
+    def append(self, step: _EpisodeStep) -> None:
         """Record one control step, bounding image memory with a stride and a hard cap."""
-        self._joint_pos.append(np.array(joint_pos, dtype=np.float32, copy=True))
-        self._joint_vel.append(np.array(joint_vel, dtype=np.float32, copy=True))
-        self._object_position.append(np.array(object_position, dtype=np.float32, copy=True))
-        self._model_action.append(np.array(model_action, dtype=np.float32, copy=True))
-        self._target.append(np.array(target, dtype=np.float32, copy=True))
-        self._terminated.append(terminated)
-        self._truncated.append(truncated)
+        images = None
         if (
             self._record_images
-            and images is not None
-            and self._step % self._image_stride == 0
-            and len(self._images) < MAX_RECORDED_IMAGE_FRAMES
+            and step.images is not None
+            and len(self._steps) % self._image_stride == 0
+            and self._recorded_image_frames < MAX_RECORDED_IMAGE_FRAMES
         ):
-            self._images.append((self._step, {name: to_uint8_rgb(frame) for name, frame in images.items()}))
-        self._step += 1
+            images = {name: to_uint8_rgb(frame) for name, frame in step.images.items()}
+            self._recorded_image_frames += 1
+        self._steps.append(
+            replace(
+                step,
+                joint_pos=np.array(step.joint_pos, dtype=np.float32, copy=True),
+                joint_vel=np.array(step.joint_vel, dtype=np.float32, copy=True),
+                object_position=np.array(step.object_position, dtype=np.float32, copy=True),
+                model_action=np.array(step.model_action, dtype=np.float32, copy=True),
+                target=np.array(step.target, dtype=np.float32, copy=True),
+                images=images,
+            )
+        )
 
     def save(self, directory: Path, episode_index: int, metadata: Mapping[str, Any]) -> None:
         """Write ``episode_XXXXXX.npz`` and ``episode_XXXXXX.json``."""
         stem = f"episode_{episode_index:06d}"
         arrays: dict[str, np.ndarray] = {
-            "joint_pos": np.stack(self._joint_pos),
-            "joint_vel": np.stack(self._joint_vel),
-            "object_position": np.stack(self._object_position),
-            "model_action": np.stack(self._model_action),
-            "applied_joint_target": np.stack(self._target),
-            "terminated": np.asarray(self._terminated, dtype=bool),
-            "truncated": np.asarray(self._truncated, dtype=bool),
+            "joint_pos": np.stack([step.joint_pos for step in self._steps]),
+            "joint_vel": np.stack([step.joint_vel for step in self._steps]),
+            "object_position": np.stack([step.object_position for step in self._steps]),
+            "model_action": np.stack([step.model_action for step in self._steps]),
+            "applied_joint_target": np.stack([step.target for step in self._steps]),
+            "terminated": np.asarray([step.terminated for step in self._steps], dtype=bool),
+            "truncated": np.asarray([step.truncated for step in self._steps], dtype=bool),
+            "inference_valid": np.asarray([step.inference_valid for step in self._steps], dtype=bool),
+            "inference_error": np.asarray([step.inference_error for step in self._steps], dtype=np.str_),
         }
         np.savez_compressed(directory / f"{stem}.npz", **arrays)
 
         meta = dict(metadata)
-        meta["steps"] = self._step
+        meta["format_version"] = 2
+        meta["steps"] = len(self._steps)
         meta["terminated_steps"] = int(arrays["terminated"].sum())
         meta["truncated_steps"] = int(arrays["truncated"].sum())
-        meta["recorded_image_frames"] = len(self._images)
+        meta["inference_failure_steps"] = int((~arrays["inference_valid"]).sum())
+        meta["recorded_image_frames"] = self._recorded_image_frames
         (directory / f"{stem}.json").write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
 
-        if self._images:
-            image_arrays: dict[str, np.ndarray] = {
-                "step": np.asarray([step for step, _ in self._images], dtype=np.int64)
-            }
+        recorded_images = [(index, step.images) for index, step in enumerate(self._steps) if step.images is not None]
+        if recorded_images:
+            image_arrays: dict[str, np.ndarray] = {"step": np.asarray([index for index, _ in recorded_images])}
             for name in AM_DP123_PI05_REQUIRED_CAMERAS:
-                image_arrays[f"image_{name}"] = np.stack([frame[name] for _, frame in self._images])
+                image_arrays[f"image_{name}"] = np.stack([images[name] for _, images in recorded_images])
             np.savez_compressed(directory / f"{stem}_images.npz", **image_arrays)
-        print(f"[pi05] wrote {stem} with {self._step} steps to {directory}", flush=True)
+        print(f"[pi05] wrote {stem} with {len(self._steps)} steps to {directory}", flush=True)
 
 
 def main() -> None:

@@ -23,10 +23,12 @@ amgg_robot_lab/
 ├── pyproject.toml                  # 包构建、依赖与离线检查配置
 ├── scripts/
 │   ├── amgg_teleop.py              # 注入 --external_callback 后调用官方遥操作脚本
-│   └── am_dp123_pi05_eval.py       # PI0.5 mock / remote 策略运行与记录入口
+│   ├── am_dp123_pi05_eval.py       # PI0.5 mock / remote 策略运行与记录入口
+│   └── am_dp123_pi05_episode.py    # episode 离线验收与仿真回放
 ├── source/amgg_robot_lab/
 │   ├── changelog.d/                # 变更片段
 │   ├── README.md / README_CN.md    # 英文 / 中文文档
+│   ├── PI05_SIM_PLATFORM.md        # PI0.5 完整服务器操作说明
 │   └── amgg_robot_lab/
 │       ├── assets/                 # AM-DP123 URDF + STL + 机器人配置
 │       ├── contracts/              # 关节 / 坐标系 / 相机契约
@@ -187,9 +189,13 @@ home 姿态下的手基座目标由 URDF FK 生成：左侧位于 `base_link` �
 
 ## PI0.5 仿真验证平台
 
+完整的服务器启动、SSH 可视化、验收、回放和 remote 接入命令见
+[`PI05_SIM_PLATFORM.md`](PI05_SIM_PLATFORM.md)。
+
 独立于 PICO 遥操的 PI0.5 策略仿真任务，用于在真机部署前让 PI0.5 策略通过 WebSocket
 接入 IsaacLab，在 AM-DP123 URDF、四路相机和物理环境上执行、观察、限位、记录和回放。
-它与遥操任务是两个独立入口，不依赖真机、PICO、Pink IK 或 CloudXR。
+它与遥操任务是两个独立入口。共享场景位于 `tasks/am_dp123_scene_cfg.py`，该模块不导入
+PICO、Pink IK、`isaaclab_teleop` 或 CloudXR，因此 PI0.5 任务可在未安装 teleop 依赖时导入。
 
 * 任务：`Isaac-AM-DP123-Pi05-Eval-v0`（`AmDp123Pi05EvalEnvCfg`）。
 * 状态 ABI 仍是 23 维（`AM_DP123_STATE_JOINT_NAMES`），执行 ABI 仍是 18 维
@@ -239,7 +245,7 @@ mock_hold（无头，验证环境 / 四路相机 / 观测 / 适配 / 步进 / �
 conda activate isaaclab30
 cd ~/zzk_data/IsaacLab
 
-./isaaclab.sh -p amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
+uv run python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
     --policy mock_hold --max_steps 120 --viz none --device cuda:0 \
     --kit_args "--/renderer/multiGpu/enabled=false"
 ```
@@ -247,8 +253,8 @@ cd ~/zzk_data/IsaacLab
 mock_sine（肉眼确认策略动作确实驱动机器人）：
 
 ```bash
-./isaaclab.sh -p amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
-    --policy mock_sine --max_steps 600 --viz kit --device cuda:0 \
+uv run --extra viser python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
+    --policy mock_sine --max_steps 600 --viz viser --device cuda:0 \
     --kit_args "--/renderer/multiGpu/enabled=false"
 ```
 
@@ -263,7 +269,8 @@ uv run scripts/serve_policy.py policy:checkpoint \
 # IsaacLab 客户端
 conda activate isaaclab30
 cd ~/zzk_data/IsaacLab
-./isaaclab.sh -p amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
+export PYTHONPATH="$HOME/openpi/packages/openpi-client/src${PYTHONPATH:+:$PYTHONPATH}"
+uv run python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
     --policy remote --host 127.0.0.1 --port 8000 \
     --prompt "pick up the orange cube and place it on the green target" \
     --action_layout amgg_robot_lab/source/amgg_robot_lab/amgg_robot_lab/policy/layouts/<CONFIRMED_LAYOUT>.json \
@@ -279,11 +286,41 @@ cd ~/zzk_data/IsaacLab
 默认目录 `outputs/am_dp123_pi05_eval/<timestamp>/`，每个 episode 保存：
 
 * `episode_XXXXXX.npz`：`joint_pos (N,23)`、`joint_vel (N,23)`、`object_position (N,3)`、
-  `model_action (N,model_action_dim)`、`applied_joint_target (N,18)`、`terminated (N,)`、`truncated (N,)`。
+  `model_action (N,model_action_dim)`、`applied_joint_target (N,18)`、`terminated (N,)`、`truncated (N,)`、
+  `inference_valid (N,)` 和 `inference_error (N,)`。协议或推理失败时执行上一安全目标，零占位动作必须结合
+  `inference_valid=false` 解读，不能视为模型输出。
 * `episode_XXXXXX.json`：task id、prompt、policy mode、remote host/port、action layout 路径与
   SHA-256、state/controlled 关节名、control dt、Git commit、步数与终止原因。
 * `--record_images` 时另存 `episode_XXXXXX_images.npz`：默认每 15 步一帧（`--image_stride`），
   最多 120 帧，避免无界内存积累；不引入视频编码依赖。
+
+终止 step 使用 IsaacLab `extras["final_obs"]` 保存 reset 前的最终状态和图像，避免把下一 episode 的 reset
+状态写进上一 episode。观测构建、图像变换、WebSocket 推理、返回值解析和动作适配统一进入安全失败边界；
+连续 5 次失败后退出。
+
+### Episode 验收与回放
+
+离线验收不启动 Isaac Sim，会检查字段、shape、NaN/Inf、动作 ABI、关节限位、元信息和推理失败标记：
+
+```bash
+uv run python amgg_robot_lab/scripts/am_dp123_pi05_episode.py \
+    --mode validate \
+    --episode outputs/am_dp123_pi05_eval/<timestamp>/episode_000000.npz
+```
+
+在全新仿真中回放已经过验收的 18 维绝对关节目标：
+
+```bash
+uv run --extra viser python amgg_robot_lab/scripts/am_dp123_pi05_episode.py \
+    --mode replay \
+    --episode outputs/am_dp123_pi05_eval/<timestamp>/episode_000000.npz \
+    --viz viser \
+    --device cuda:0 \
+    --kit_args "--/renderer/multiGpu/enabled=false"
+```
+
+回放默认执行完整 episode；可加 `--max_steps 300` 只回放前 300 步。它回放的是已经过安全适配器处理的
+`applied_joint_target`，用于复查机器人动作是否变形，不会重新调用 OpenPI。
 
 ### 真机部署前必须统一
 
@@ -325,7 +362,7 @@ uv run --no-project --with ruff ruff check . && uv run --no-project --with ruff 
 4. 戴好头显后先把两只手柄放在舒适中立位，再点 Play。第一帧只建立原点，机器人应保持 home；
    随后分别前后、左右、上下移动 3–5 cm，确认同侧手基座同方向运动，再验证旋转与夹爪。
    需要重新摆放手柄时先 Stop，摆好后再 Play，机器人应从停止位置连续恢复。
-5. PI0.5 冒烟（独立入口）：`./isaaclab.sh -p amgg_robot_lab/scripts/am_dp123_pi05_eval.py --policy mock_hold --max_steps 120 --viz none --device cuda:0 --kit_args "--/renderer/multiGpu/enabled=false"`，
+5. PI0.5 冒烟（独立入口）：`uv run python amgg_robot_lab/scripts/am_dp123_pi05_eval.py --policy mock_hold --max_steps 120 --viz none --device cuda:0 --kit_args "--/renderer/multiGpu/enabled=false"`，
    确认四路相机创建、机器人保持 home、120 step 后正常退出并生成 NPZ/JSON（无 NaN、shape 正确）；
    再用 `--policy mock_sine --max_steps 600 --viz kit` 确认机器人平滑小幅运动、无越限或仿真发散。
 6. 提交前运行 `uv run isaaclab -f`（ruff + pre-commit 全量检查）。

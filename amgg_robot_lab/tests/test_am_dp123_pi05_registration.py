@@ -3,67 +3,95 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""The PI0.5 evaluation task stays registered and decoupled from the PICO teleop task.
-
-The task configuration imports Isaac Lab, so these checks inspect the source contract
-instead of importing it; they run on any machine that has the checkout.
-"""
+"""Registration and dependency-boundary tests for the PI0.5 evaluation task."""
 
 from __future__ import annotations
 
+import ast
+import importlib
+import importlib.util
 import json
+import sys
 import tomllib
 from pathlib import Path
 
+import pytest
+
+from amgg_robot_lab import tasks
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = PROJECT_ROOT / "source" / "amgg_robot_lab" / "amgg_robot_lab"
-TASKS_SOURCE = (PACKAGE_ROOT / "tasks" / "__init__.py").read_text(encoding="utf-8")
-ENV_SOURCE = (PACKAGE_ROOT / "tasks" / "am_dp123_pi05_env_cfg.py").read_text(encoding="utf-8")
-SHARED_ENV_SOURCE = (PACKAGE_ROOT / "tasks" / "am_dp123_pico_xr_env_cfg.py").read_text(encoding="utf-8")
-SCRIPT_SOURCE = (PROJECT_ROOT / "scripts" / "am_dp123_pi05_eval.py").read_text(encoding="utf-8")
+PI05_ENV_PATH = PACKAGE_ROOT / "tasks" / "am_dp123_pi05_env_cfg.py"
+SHARED_ENV_PATH = PACKAGE_ROOT / "tasks" / "am_dp123_scene_cfg.py"
+SCRIPT_PATH = PROJECT_ROOT / "scripts" / "am_dp123_pi05_eval.py"
 
 
-def test_pi05_task_is_registered():
-    """Gym registration exposes the PI0.5 task next to the PICO task."""
-    assert "AM_DP123_PI05_EVAL_TASK_ID" in TASKS_SOURCE
-    assert '"Isaac-AM-DP123-Pi05-Eval-v0"' in TASKS_SOURCE
-    assert "AM_DP123_PI05_EVAL_ENV_CFG_MODULE" in TASKS_SOURCE
-    assert "AM_DP123_PI05_EVAL_ENV_CFG" in TASKS_SOURCE
-    assert "AM_DP123_PICO_XR_TASK_ID" in TASKS_SOURCE
+def _parsed(path: Path) -> ast.Module:
+    """Parse a Python source file into an AST."""
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
-def test_env_cfg_uses_direct_joint_position_action():
-    """The policy task commands joints directly with the official action term."""
-    assert "JointPositionActionCfg" in ENV_SOURCE
-    assert "joint_names=list(AM_DP123_CONTROLLED_JOINT_NAMES)" in ENV_SOURCE
-    assert "preserve_order=True" in ENV_SOURCE
-    assert "use_default_offset=False" in ENV_SOURCE
-    assert "clip=AM_DP123_PI05_CLIP" in ENV_SOURCE
-    assert "AM_DP123_PI05_DECIMATION = 4" in ENV_SOURCE
-    assert "AM_DP123_PI05_SIM_DT = 1.0 / 120.0" in ENV_SOURCE
+def _imported_modules(path: Path) -> set[str]:
+    """Return direct module names imported by a Python file."""
+    modules: set[str] = set()
+    for node in ast.walk(_parsed(path)):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            modules.add(node.module)
+    return modules
 
 
-def test_env_cfg_has_no_pink_ik_or_teleop_pipeline():
-    """The policy task must not build the PICO teleoperation pipeline."""
-    for token in (
-        "PinkIKControllerCfg",
-        "AmDp123PinkInverseKinematicsActionCfg",
-        "build_am_dp123_pico_pipeline",
-        "IsaacTeleopCfg",
-        "XrCameraFeedCfg",
-        "isaacteleop",
-        "isaac_teleop",
-    ):
-        assert token not in ENV_SOURCE, token
+def _load_eval_module():
+    """Load the evaluation script without starting Isaac Sim."""
+    spec = importlib.util.spec_from_file_location("am_dp123_pi05_eval", SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_env_cfg_reuses_the_camera_scene_and_observations():
-    """The four-camera scene and observation group are shared, not duplicated."""
-    for token in ("AmDp123SceneCfg", "ObservationsCfg", "EventCfg", "TerminationsCfg"):
-        assert token in ENV_SOURCE
+def test_pi05_task_id_is_public_and_stable():
+    """The package exposes the registered task id as a public contract."""
+    assert tasks.AM_DP123_PI05_EVAL_TASK_ID == "Isaac-AM-DP123-Pi05-Eval-v0"
+    assert tasks.AM_DP123_PICO_XR_TASK_ID == "Isaac-AM-DP123-Pico-XR-v0"
+
+
+def test_pi05_config_has_an_independent_dependency_boundary():
+    """The PI0.5 config reaches shared scene code without importing the PICO stack."""
+    pi05_imports = _imported_modules(PI05_ENV_PATH)
+    shared_imports = _imported_modules(SHARED_ENV_PATH)
+    assert "am_dp123_scene_cfg" in pi05_imports
+    assert "am_dp123_pico_xr_env_cfg" not in pi05_imports
+    forbidden = {"isaaclab_teleop", "amgg_robot_lab.teleop", "isaaclab.controllers.pink_ik"}
+    assert pi05_imports.isdisjoint(forbidden)
+    assert shared_imports.isdisjoint(forbidden)
+
+
+def test_shared_scene_exposes_four_camera_observations():
+    """The controller-neutral scene owns all four camera sensors and observations."""
+    assigned_names = {
+        target.id
+        for node in ast.walk(_parsed(SHARED_ENV_PATH))
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        for target in ([node.target] if isinstance(node, ast.AnnAssign) else node.targets)
+        if isinstance(target, ast.Name)
+    }
     for camera in ("head_left", "head_right", "left_wrist", "right_wrist"):
-        assert f"image_{camera}" in SHARED_ENV_SOURCE
-        assert f'_camera("{camera}"' in SHARED_ENV_SOURCE
+        assert camera in assigned_names
+        assert f"image_{camera}" in assigned_names
+
+
+@pytest.mark.skipif(importlib.util.find_spec("isaaclab") is None, reason="Isaac Lab is unavailable")
+def test_pi05_config_imports_when_teleop_is_unavailable(monkeypatch: pytest.MonkeyPatch):
+    """A runtime import of the PI0.5 config does not require IsaacTeleop."""
+    monkeypatch.setitem(sys.modules, "isaaclab_teleop", None)
+    sys.modules.pop("amgg_robot_lab.tasks.am_dp123_pi05_env_cfg", None)
+    module = importlib.import_module("amgg_robot_lab.tasks.am_dp123_pi05_env_cfg")
+    cfg = module.AmDp123Pi05EvalEnvCfg()
+    assert cfg.compute_final_obs is True
+    assert cfg.actions.joint_positions.preserve_order is True
 
 
 def test_package_data_ships_the_action_layouts():
@@ -83,17 +111,12 @@ def test_shipped_layouts_decode_and_mark_confirmation():
     assert template["source_indices"] is None
 
 
-def test_script_defers_openpi_and_mock_policies():
-    """The run script parses the CLI first and imports OpenPI only for remote mode."""
-    module_level = [
-        line for line in SCRIPT_SOURCE.splitlines() if line.startswith(("import openpi_client", "from openpi_client"))
-    ]
-    assert module_level == []
-    assert "from openpi_client import image_tools" in SCRIPT_SOURCE
-    assert "from openpi_client import websocket_client_policy" in SCRIPT_SOURCE
-    assert "AppLauncher(args_cli, enable_cameras=True)" in SCRIPT_SOURCE
+def test_evaluation_script_help_lists_the_policy_contract():
+    """The runnable entry point advertises every required policy and CLI option."""
+    module = _load_eval_module()
+    help_text = module._build_parser().format_help()
     for policy in ("mock_hold", "mock_sine", "remote"):
-        assert f'"{policy}"' in SCRIPT_SOURCE
+        assert policy in help_text
     for flag in (
         "--policy",
         "--host",
@@ -106,7 +129,15 @@ def test_script_defers_openpi_and_mock_policies():
         "--record_images",
         "--no_record",
     ):
-        assert flag in SCRIPT_SOURCE
-    assert "AM_DP123_PI05_CONTROL_DT" in SCRIPT_SOURCE
-    assert "_make_remote_image_transform" in SCRIPT_SOURCE
-    assert "MAX_CONSECUTIVE_INFERENCE_FAILURES" in SCRIPT_SOURCE
+        assert flag in help_text
+
+
+def test_terminal_recording_uses_final_observation():
+    """A terminal transition records the pre-reset observation exposed by Isaac Lab."""
+    module = _load_eval_module()
+    reset_obs = {"robot_joint_pos": "reset"}
+    final_obs = {"robot_joint_pos": "terminal"}
+    assert module._record_policy_observation(reset_obs, {"final_obs": {"policy": final_obs}}, True) is final_obs
+    assert module._record_policy_observation(reset_obs, {}, False) is reset_obs
+    with pytest.raises(RuntimeError, match="final_obs"):
+        module._record_policy_observation(reset_obs, {}, True)

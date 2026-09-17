@@ -20,7 +20,7 @@ from isaaclab.visualizers import VisualizerCfg
 
 from amgg_robot_lab.contracts import AM_DP123_CONTROLLED_JOINT_NAMES, AM_DP123_JOINT_SPECS
 
-from .am_dp123_pico_xr_env_cfg import AmDp123SceneCfg, EventCfg, ObservationsCfg, TerminationsCfg
+from .am_dp123_scene_cfg import AmDp123SceneCfg, EventCfg, ObservationsCfg, TerminationsCfg
 
 AM_DP123_PI05_SIM_DT = 1.0 / 120.0
 """Physics time step [s]."""
@@ -70,6 +70,7 @@ class AmDp123Pi05EvalEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         self.decimation = AM_DP123_PI05_DECIMATION
         self.episode_length_s = 60.0
+        self.compute_final_obs = True
         self.sim.dt = AM_DP123_PI05_SIM_DT
         self.sim.render_interval = 2
         self.sim.device = "cuda:0"

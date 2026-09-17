@@ -77,6 +77,7 @@ def test_task_registration_module_exposes_the_callback():
     assert "def register_tasks() -> None:" in tasks_source
     assert '"Isaac-AM-DP123-Pico-XR-v0"' in tasks_source or "AM_DP123_PICO_XR_TASK_ID" in tasks_source
     env_source = (package_dir / "tasks" / "am_dp123_pico_xr_env_cfg.py").read_text(encoding="utf-8")
+    scene_source = (package_dir / "tasks" / "am_dp123_scene_cfg.py").read_text(encoding="utf-8")
     assert "XrCameraFeedCfg" in env_source
     assert "pipeline = build_am_dp123_pico_pipeline()" in env_source
     assert "pipeline_builder=lambda: pipeline" in env_source
@@ -90,8 +91,8 @@ def test_task_registration_module_exposes_the_callback():
     assert "cost=0.02" in env_source
     assert "build_am_dp123_pico_pipeline()[" not in env_source
     assert "disable_external_cameras" not in env_source
-    assert "focal_length=camera.focal_length_mm / 10.0" in env_source
-    assert "horizontal_aperture=camera.horizontal_aperture_mm / 10.0" in env_source
+    assert "focal_length=camera.focal_length_mm / 10.0" in scene_source
+    assert "horizontal_aperture=camera.horizontal_aperture_mm / 10.0" in scene_source
 
     project_root = package_dir.parents[2]
     project = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))

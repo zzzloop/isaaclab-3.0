@@ -130,9 +130,9 @@ def build_pi05_observation(
     """Build the OpenPI remote-inference payload from Isaac Lab observations.
 
     Args:
-        joint_pos: 23-D joint positions ordered like
+        joint_pos: 23-D joint positions [rad] ordered like
             :data:`AM_DP123_PI05_STATE_JOINT_NAMES`.
-        joint_vel: 23-D joint velocities in the same order.
+        joint_vel: 23-D joint velocities [rad/s] in the same order.
         images: Mapping keyed by :data:`AM_DP123_PI05_REQUIRED_CAMERAS`.
         prompt: Task instruction sent verbatim to OpenPI.
         image_transform: Optional per-image conversion. Defaults to
@@ -215,9 +215,10 @@ class AmDp123ActionLayout:
             equal :data:`AM_DP123_PI05_CONTROLLED_JOINT_NAMES`.
         source_indices: One model-action index per simulation joint. ``None`` only while
             the layout is unconfirmed.
-        scale: Per-joint multiplier applied after selection.
-        offset: Per-joint offset applied after scaling.
-        velocity_scale: Fraction of each joint's ``max_velocity_rad_s`` allowed per step.
+        scale: Per-joint multiplier from model units to joint position units.
+        offset: Per-joint joint-position offset [rad] applied after scaling.
+        velocity_scale: Dimensionless fraction of each joint's maximum velocity allowed
+            per step.
         notes: Free-form human notes.
         path: Source file, when the layout was loaded from disk.
     """
@@ -374,8 +375,9 @@ class Pi05ActionAdapter:
 
         Args:
             layout: Confirmed action layout.
-            control_dt: Seconds between two control steps, i.e. ``sim.dt * decimation``.
-            joint_specs: Joint contract providing the position and velocity limits.
+            control_dt: Time [s] between two control steps, i.e. ``sim.dt * decimation``.
+            joint_specs: Joint contract providing position [rad] and velocity [rad/s]
+                limits.
 
         Raises:
             ValueError: If the layout is unconfirmed, the control period is invalid, or a
@@ -427,10 +429,11 @@ class Pi05ActionAdapter:
         """Rebase velocity limiting at the measured joint positions after a reset.
 
         Args:
-            current_joint_pos: Current commanded joints in the layout's order.
+            current_joint_pos: Current commanded joint positions [rad] in the layout's
+                order.
 
         Returns:
-            The clamped reset target that the adapter will use as its starting point.
+            The clamped reset target [rad] that the adapter will use as its starting point.
         """
         positions = np.asarray(as_numpy(current_joint_pos), dtype=np.float64)
         if positions.shape != (self.action_dim,):
@@ -444,10 +447,12 @@ class Pi05ActionAdapter:
         """Convert a raw model action or chunk into a bounded ``(T, 18)`` target chunk.
 
         Args:
-            actions: ``(model_action_dim,)`` single action or ``(T, model_action_dim)`` chunk.
+            actions: ``(model_action_dim,)`` single action or ``(T, model_action_dim)``
+                chunk in the units described by the action layout.
 
         Returns:
-            Float64 array of shape ``(T, 18)`` with position- and velocity-limited targets.
+            Float64 array of shape ``(T, 18)`` with position- and velocity-limited
+            targets [rad].
 
         Raises:
             RuntimeError: If :meth:`reset` has not been called yet.

@@ -24,6 +24,7 @@ from amgg_robot_lab.policy import (
     load_action_layout,
     load_default_action_layout,
     to_uint8_rgb,
+    validate_pi05_episode,
 )
 
 _CONTROL_DT = 1.0 / 30.0
@@ -293,3 +294,47 @@ def test_observation_rejects_missing_camera_and_bad_state():
     bad_state[0] = np.nan
     with pytest.raises(ValueError):
         build_pi05_observation(bad_state, np.zeros(23), _images(), "prompt")
+
+
+def _episode_arrays(steps: int = 3) -> dict[str, np.ndarray]:
+    """Return a small valid version-2 episode payload."""
+    return {
+        "joint_pos": np.zeros((steps, 23), dtype=np.float32),
+        "joint_vel": np.zeros((steps, 23), dtype=np.float32),
+        "object_position": np.zeros((steps, 3), dtype=np.float32),
+        "model_action": np.zeros((steps, 18), dtype=np.float32),
+        "applied_joint_target": np.repeat(_HOME[None, :], steps, axis=0).astype(np.float32),
+        "terminated": np.zeros(steps, dtype=bool),
+        "truncated": np.zeros(steps, dtype=bool),
+        "inference_valid": np.ones(steps, dtype=bool),
+        "inference_error": np.full(steps, "", dtype=np.str_),
+    }
+
+
+def test_episode_validation_accepts_valid_data_and_reports_failures():
+    """The acceptance helper distinguishes valid model output from held failure steps."""
+    arrays = _episode_arrays()
+    arrays["inference_valid"][1] = False
+    arrays["inference_error"][1] = "TimeoutError: server unavailable"
+    summary = validate_pi05_episode(arrays)
+    assert summary.steps == 3
+    assert summary.model_action_dim == 18
+    assert summary.inference_failure_steps == 1
+
+
+def test_episode_validation_rejects_corruption_and_ambiguous_failures():
+    """Bad shapes, non-finite values, unsafe targets, and unlabeled holds are rejected."""
+    arrays = _episode_arrays()
+    arrays["joint_pos"][0, 0] = np.nan
+    with pytest.raises(ValueError, match="joint_pos contains"):
+        validate_pi05_episode(arrays)
+
+    arrays = _episode_arrays()
+    arrays["applied_joint_target"][0, 0] = 100.0
+    with pytest.raises(ValueError, match="joint position limits"):
+        validate_pi05_episode(arrays)
+
+    arrays = _episode_arrays()
+    arrays["inference_valid"][0] = False
+    with pytest.raises(ValueError, match="must describe"):
+        validate_pi05_episode(arrays)
