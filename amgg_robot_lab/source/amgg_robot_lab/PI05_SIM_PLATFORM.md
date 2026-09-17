@@ -19,6 +19,15 @@ export ISAACLAB_CXR_ACCEPT_EULA=yes
 显示器接在 GPU2 不需要修改命令。`--device cuda:0` 只选择计算 GPU，可按实际负载改为 `cuda:1`、
 `cuda:2` 或 `cuda:3`。
 
+本文优先给出 Isaac Lab 3.0 的 `uv run` 命令。如果服务器继续复用已经通过 `./isaaclab.sh -i` 安装好的
+`isaaclab30` conda 环境，并且 `uv run` 开始创建新的 `.venv`，可把下文 IsaacLab 客户端命令开头的
+`uv run python` 或 `uv run --extra viser python` 原样替换为 `./isaaclab.sh -p`。OpenPI 服务端自身的
+`uv run scripts/serve_policy.py` 不要替换。使用 conda 兼容命令前确认：
+
+```bash
+./isaaclab.sh -p -c "import isaacsim, viser; print('isaaclab30 runtime ok')"
+```
+
 ## 2. 无头链路冒烟
 
 先运行保持策略，验证 URDF、物理环境、四路相机、23 维状态、动作适配和 episode 写盘：
