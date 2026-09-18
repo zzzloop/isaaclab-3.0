@@ -9,9 +9,10 @@ This module deliberately depends only on NumPy and :mod:`amgg_robot_lab.contract
 observation conversion, the action-layout JSON schema, and the safety adapter can be
 tested offline on Windows without Isaac Sim, Torch, OpenPI, or a WebSocket client.
 
-The model state and action width is the confirmed 32-D AM-DP123 ABI: 18 physical
-controls followed by 14 zero-padding entries. The layout expands the two single-value
-grippers to their URDF mimic pairs and never sends padding entries to the articulation.
+The OpenPI WebSocket contract contains 18 physical values. The BPX server transforms
+pad those values to the model's 32-D internal width and remove the 14 reserved entries
+again before returning actions. The layout expands the two single-value grippers to
+their URDF mimic pairs.
 """
 
 from __future__ import annotations
@@ -39,10 +40,13 @@ AM_DP123_PI05_STATE_JOINT_NAMES = AM_DP123_STATE_JOINT_NAMES
 """Canonical 23-D raw Isaac Lab state order used before policy conversion."""
 
 AM_DP123_PI05_MODEL_DIM = 32
-"""Fixed PI0.5 state and action width."""
+"""PI0.5 network width after server-side BPX padding."""
 
 AM_DP123_PI05_REAL_DIM = 18
 """Number of PI0.5 entries with physical meaning."""
+
+AM_DP123_PI05_POLICY_DIM = AM_DP123_PI05_REAL_DIM
+"""Width sent to and returned by the configured OpenPI WebSocket policy."""
 
 AM_DP123_PI05_MODEL_JOINT_NAMES: tuple[str, ...] = (
     *AM_DP123_ARM_JOINT_NAMES[:7],
@@ -115,20 +119,19 @@ def controlled_state_indices() -> tuple[int, ...]:
     return tuple(state_positions[name] for name in AM_DP123_PI05_CONTROLLED_JOINT_NAMES)
 
 
-def to_pi05_model_state(joint_state: object) -> np.ndarray:
-    """Convert the raw 23-D articulation state to the canonical 32-D PI0.5 state.
+def to_pi05_policy_state(joint_state: object) -> np.ndarray:
+    """Convert the raw 23-D articulation state to the physical 18-D policy state.
 
     The gripper value is the first (driving) URDF finger joint. The second finger is
-    its ``-1`` mimic and is deliberately absent from the model ABI. Entries 18--31
-    are freshly allocated zeros, so base, waist, and mimic joints cannot leak into
-    the reserved model dimensions.
+    its ``-1`` mimic and is deliberately absent from the policy ABI. Base, waist, and
+    mimic joints cannot leak into the policy state.
 
     Args:
         joint_state: Raw joint positions [rad] or velocities [rad/s] ordered like
             :data:`AM_DP123_PI05_STATE_JOINT_NAMES`.
 
     Returns:
-        Contiguous ``float32`` vector of shape ``(32,)``.
+        Contiguous ``float32`` vector of shape ``(18,)``.
     """
     raw = np.asarray(as_numpy(joint_state))
     if raw.shape != (AM_DP123_STATE_DIM,):
@@ -137,13 +140,24 @@ def to_pi05_model_state(joint_state: object) -> np.ndarray:
         raise ValueError("Raw joint state contains non-finite values.")
 
     state_positions = {name: index for index, name in enumerate(AM_DP123_STATE_JOINT_NAMES)}
+    policy_state = np.empty(AM_DP123_PI05_POLICY_DIM, dtype=np.float32)
+    policy_state[0:7] = raw[[state_positions[name] for name in AM_DP123_ARM_JOINT_NAMES[:7]]]
+    policy_state[7] = raw[state_positions[AM_DP123_HAND_JOINT_NAMES[0]]]
+    policy_state[8:15] = raw[[state_positions[name] for name in AM_DP123_ARM_JOINT_NAMES[7:]]]
+    policy_state[15] = raw[state_positions[AM_DP123_HAND_JOINT_NAMES[2]]]
+    policy_state[16:18] = raw[[state_positions[name] for name in AM_DP123_HEAD_JOINT_NAMES]]
+    return np.ascontiguousarray(policy_state)
+
+
+def to_pi05_model_state(joint_state: object) -> np.ndarray:
+    """Build the 32-D internal model state for diagnostics and transform tests.
+
+    Runtime WebSocket payloads must use :func:`to_pi05_policy_state`; ``BpxInputs``
+    performs this padding on the OpenPI server.
+    """
     model = np.zeros(AM_DP123_PI05_MODEL_DIM, dtype=np.float32)
-    model[0:7] = raw[[state_positions[name] for name in AM_DP123_ARM_JOINT_NAMES[:7]]]
-    model[7] = raw[state_positions[AM_DP123_HAND_JOINT_NAMES[0]]]
-    model[8:15] = raw[[state_positions[name] for name in AM_DP123_ARM_JOINT_NAMES[7:]]]
-    model[15] = raw[state_positions[AM_DP123_HAND_JOINT_NAMES[2]]]
-    model[16:18] = raw[[state_positions[name] for name in AM_DP123_HEAD_JOINT_NAMES]]
-    return np.ascontiguousarray(model)
+    model[:AM_DP123_PI05_POLICY_DIM] = to_pi05_policy_state(joint_state)
+    return model
 
 
 def to_uint8_rgb(image: object) -> np.ndarray:
@@ -201,8 +215,8 @@ def build_pi05_observation(
         ValueError: If a camera is missing, a state vector has the wrong shape, or a
             state value is not finite.
     """
-    state = to_pi05_model_state(joint_pos)
-    velocity = to_pi05_model_state(joint_vel)
+    state = to_pi05_policy_state(joint_pos)
+    velocity = to_pi05_policy_state(joint_vel)
 
     if not isinstance(prompt, str):
         raise ValueError("OpenPI prompt must be a string.")
@@ -250,12 +264,13 @@ def action_layout_sha256(path: str | Path) -> str:
 
 @dataclass(frozen=True, slots=True)
 class AmDp123ActionLayout:
-    """External mapping from a 32-D model action to internal URDF targets.
+    """Map an 18-D de-transformed policy action to internal URDF targets.
 
     Attributes:
         schema_version: Layout schema version. Only version ``1`` is supported.
         confirmed: ``False`` marks a template whose model semantics are unverified.
-        model_action_dim: Width of the model action chunk.
+        model_action_dim: Width used internally by the PI0.5 network.
+        policy_action_dim: Width returned by the server after ``BpxOutputs``.
         mode: ``absolute_joint_position`` or ``delta_joint_position``.
         sim_joint_names: Simulation joint order the selected entries command. It must
             equal :data:`AM_DP123_PI05_CONTROLLED_JOINT_NAMES`.
@@ -274,6 +289,7 @@ class AmDp123ActionLayout:
     schema_version: int
     confirmed: bool
     model_action_dim: int
+    policy_action_dim: int
     mode: str
     sim_joint_names: tuple[str, ...]
     source_indices: tuple[int, ...] | None
@@ -334,6 +350,9 @@ class AmDp123ActionLayout:
         model_action_dim = int(data.get("model_action_dim", 0))
         if model_action_dim != AM_DP123_PI05_MODEL_DIM:
             raise ValueError(f"AM-DP123 PI0.5 model_action_dim must be {AM_DP123_PI05_MODEL_DIM}.")
+        policy_action_dim = int(data.get("policy_action_dim", 0))
+        if policy_action_dim != AM_DP123_PI05_POLICY_DIM:
+            raise ValueError(f"AM-DP123 PI0.5 policy_action_dim must be {AM_DP123_PI05_POLICY_DIM}.")
 
         raw_names = data.get("sim_joint_names")
         if not isinstance(raw_names, Sequence) or isinstance(raw_names, str):
@@ -359,8 +378,8 @@ class AmDp123ActionLayout:
                 raise ValueError(
                     f"Action layout source_indices must hold {len(sim_joint_names)} entries, got {len(source_indices)}."
                 )
-            if any(index < 0 or index >= model_action_dim for index in source_indices):
-                raise ValueError("Action layout source_indices must fall inside the model action vector.")
+            if any(index < 0 or index >= policy_action_dim for index in source_indices):
+                raise ValueError("Action layout source_indices must fall inside the policy action vector.")
             if source_indices != AM_DP123_PI05_SOURCE_INDICES:
                 raise ValueError("Action layout source_indices do not match the canonical AM-DP123 PI0.5 mapping.")
 
@@ -386,6 +405,7 @@ class AmDp123ActionLayout:
             schema_version=schema_version,
             confirmed=confirmed,
             model_action_dim=model_action_dim,
+            policy_action_dim=policy_action_dim,
             mode=mode,
             sim_joint_names=sim_joint_names,
             source_indices=source_indices,
@@ -420,7 +440,7 @@ def load_default_action_layout() -> AmDp123ActionLayout:
 
 
 class Pi05ActionAdapter:
-    """Map raw model action chunks onto bounded absolute joint targets.
+    """Map de-transformed policy action chunks onto bounded absolute joint targets.
 
     The adapter selects internal URDF targets with the layout's ``source_indices``,
     applies ``scale`` and ``offset``, converts to absolute or delta targets, and then
@@ -510,7 +530,7 @@ class Pi05ActionAdapter:
         """Convert a raw model action or chunk into a bounded URDF target chunk.
 
         Args:
-            actions: ``(model_action_dim,)`` single action or ``(T, model_action_dim)``
+            actions: ``(policy_action_dim,)`` single action or ``(T, policy_action_dim)``
                 chunk in the units described by the action layout.
 
         Returns:
@@ -528,10 +548,10 @@ class Pi05ActionAdapter:
             raise ValueError(f"Model actions must be 1-D or 2-D, got shape {values.shape}.")
         if values.shape[0] == 0:
             raise ValueError("Model action chunk is empty.")
-        if values.shape[1] != self._layout.model_action_dim:
+        if values.shape[1] != self._layout.policy_action_dim:
             raise ValueError(
-                f"Model action width {values.shape[1]} does not match layout model_action_dim "
-                f"{self._layout.model_action_dim}."
+                f"Policy action width {values.shape[1]} does not match layout policy_action_dim "
+                f"{self._layout.policy_action_dim}."
             )
         if not np.all(np.isfinite(values)):
             raise ValueError("Model actions contain NaN or Inf.")
@@ -564,6 +584,7 @@ __all__ = [
     "AM_DP123_PI05_MODEL_DIM",
     "AM_DP123_PI05_MODEL_JOINT_NAMES",
     "AM_DP123_PI05_OBSERVATION_KEYS",
+    "AM_DP123_PI05_POLICY_DIM",
     "AM_DP123_PI05_REQUIRED_CAMERAS",
     "AM_DP123_PI05_REAL_DIM",
     "AM_DP123_PI05_SOURCE_INDICES",
@@ -578,5 +599,6 @@ __all__ = [
     "load_action_layout",
     "load_default_action_layout",
     "to_pi05_model_state",
+    "to_pi05_policy_state",
     "to_uint8_rgb",
 ]

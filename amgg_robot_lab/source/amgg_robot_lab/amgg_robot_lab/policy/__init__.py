@@ -22,6 +22,7 @@ from .am_dp123_pi05_protocol import (
     AM_DP123_PI05_MODEL_DIM,
     AM_DP123_PI05_MODEL_JOINT_NAMES,
     AM_DP123_PI05_OBSERVATION_KEYS,
+    AM_DP123_PI05_POLICY_DIM,
     AM_DP123_PI05_REAL_DIM,
     AM_DP123_PI05_REQUIRED_CAMERAS,
     AM_DP123_PI05_SOURCE_INDICES,
@@ -36,6 +37,7 @@ from .am_dp123_pi05_protocol import (
     load_action_layout,
     load_default_action_layout,
     to_pi05_model_state,
+    to_pi05_policy_state,
     to_uint8_rgb,
 )
 
@@ -51,6 +53,7 @@ __all__ = [
     "AM_DP123_PI05_MODEL_DIM",
     "AM_DP123_PI05_MODEL_JOINT_NAMES",
     "AM_DP123_PI05_OBSERVATION_KEYS",
+    "AM_DP123_PI05_POLICY_DIM",
     "AM_DP123_PI05_REQUIRED_CAMERAS",
     "AM_DP123_PI05_REAL_DIM",
     "AM_DP123_PI05_SOURCE_INDICES",
@@ -67,6 +70,7 @@ __all__ = [
     "load_default_action_layout",
     "load_pi05_episode",
     "to_pi05_model_state",
+    "to_pi05_policy_state",
     "to_uint8_rgb",
     "validate_pi05_episode",
 ]

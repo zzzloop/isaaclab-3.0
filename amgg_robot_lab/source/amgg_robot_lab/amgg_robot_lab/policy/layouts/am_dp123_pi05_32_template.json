@@ -2,6 +2,7 @@
   "schema_version": 1,
   "confirmed": true,
   "model_action_dim": 32,
+  "policy_action_dim": 18,
   "mode": "absolute_joint_position",
   "sim_joint_names": [
     "openarm_left_joint1",
@@ -30,5 +31,5 @@
   "scale": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 1.0],
   "offset": 0.0,
   "velocity_scale": 0.5,
-  "notes": "Confirmed AM-DP123 PI0.5 32-D contract: left arm 0:7, left gripper master joint at 7, right arm 8:15, right gripper master joint at 15, head at 16:18, and ignored zero padding at 18:32. Each gripper source expands to its driving URDF joint q and mimic joint -q."
+  "notes": "Confirmed AM-DP123 PI0.5 contract: the WebSocket policy interface has 18 physical values; BpxInputs pads them to the model internal 32-D width and BpxOutputs returns 18 values. Each gripper source expands to its driving URDF joint q and mimic joint -q."
 }

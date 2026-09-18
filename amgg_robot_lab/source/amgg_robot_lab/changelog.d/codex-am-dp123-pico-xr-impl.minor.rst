@@ -21,8 +21,8 @@ Added
   pipeline.
 
 * Added ``amgg_robot_lab.policy``: the OpenPI observation payload builder and the
-  ``Pi05ActionAdapter`` safety adapter with the confirmed 32-D PI0.5 state and
-  action contract: 18 physical controls followed by 14 zero-padding entries.
+  ``Pi05ActionAdapter`` safety adapter with the confirmed 18-D WebSocket policy
+  contract and server-side padding to the 32-D PI0.5 network width.
 
 * Added ``scripts/am_dp123_pi05_eval.py`` with ``mock_hold``, ``mock_sine``, and a
   lazily imported ``remote`` OpenPI WebSocket client, plus bounded episode NPZ/JSON

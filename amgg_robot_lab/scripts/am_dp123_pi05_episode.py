@@ -67,8 +67,10 @@ def _validate_metadata(metadata: Mapping[str, Any], summary: Pi05EpisodeValidati
         raise ValueError("Episode metadata format_version must be 2.")
     if int(metadata.get("steps", -1)) != summary.steps:
         raise ValueError("Episode metadata step count does not match the NPZ payload.")
-    if int(metadata.get("model_action_dim", -1)) != summary.model_action_dim:
-        raise ValueError("Episode metadata model_action_dim does not match the NPZ payload.")
+    if int(metadata.get("policy_action_dim", -1)) != summary.model_action_dim:
+        raise ValueError("Episode metadata policy_action_dim does not match the NPZ payload.")
+    if int(metadata.get("model_action_dim", -1)) != 32:
+        raise ValueError("Episode metadata model_action_dim must describe the internal 32-D PI0.5 model.")
     if int(metadata.get("inference_failure_steps", -1)) != summary.inference_failure_steps:
         raise ValueError("Episode metadata inference_failure_steps does not match the NPZ payload.")
     if tuple(metadata.get("state_joint_names", ())) != AM_DP123_PI05_STATE_JOINT_NAMES:

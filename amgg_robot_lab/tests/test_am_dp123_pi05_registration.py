@@ -106,6 +106,7 @@ def test_shipped_layouts_decode_and_mark_confirmation():
     layouts = PACKAGE_ROOT / "policy" / "layouts"
     template = json.loads((layouts / "am_dp123_pi05_32_template.json").read_text(encoding="utf-8"))
     assert template["confirmed"] is True and template["model_action_dim"] == 32
+    assert template["policy_action_dim"] == 18
     assert template["source_indices"] == [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 7, 7, 15, 15, 16, 17]
     assert template["zero_padding_indices"] == list(range(18, 32))
 

@@ -18,6 +18,7 @@ from amgg_robot_lab.policy import (
     AM_DP123_PI05_MODEL_DIM,
     AM_DP123_PI05_MODEL_JOINT_NAMES,
     AM_DP123_PI05_OBSERVATION_KEYS,
+    AM_DP123_PI05_POLICY_DIM,
     AM_DP123_PI05_REQUIRED_CAMERAS,
     AM_DP123_PI05_SOURCE_INDICES,
     AM_DP123_PI05_ZERO_PADDING_INDICES,
@@ -27,6 +28,7 @@ from amgg_robot_lab.policy import (
     controlled_state_indices,
     load_default_action_layout,
     to_pi05_model_state,
+    to_pi05_policy_state,
     to_uint8_rgb,
     validate_pi05_episode,
 )
@@ -45,6 +47,7 @@ def _layout_dict(**overrides: object) -> dict[str, object]:
         "schema_version": 1,
         "confirmed": True,
         "model_action_dim": AM_DP123_PI05_MODEL_DIM,
+        "policy_action_dim": AM_DP123_PI05_POLICY_DIM,
         "mode": AM_DP123_PI05_ABSOLUTE_MODE,
         "sim_joint_names": list(AM_DP123_PI05_CONTROLLED_JOINT_NAMES),
         "source_indices": list(AM_DP123_PI05_SOURCE_INDICES),
@@ -58,7 +61,7 @@ def _layout_dict(**overrides: object) -> dict[str, object]:
 
 
 def _model_action_from_target(target: np.ndarray) -> np.ndarray:
-    action = np.zeros(AM_DP123_PI05_MODEL_DIM, dtype=np.float64)
+    action = np.zeros(AM_DP123_PI05_POLICY_DIM, dtype=np.float64)
     action[0:7] = target[0:7]
     action[8:15] = target[7:14]
     action[7] = target[14]
@@ -76,6 +79,7 @@ def test_default_layout_is_confirmed_32d_contract():
     assert layout.path == AM_DP123_PI05_32_TEMPLATE_PATH
     assert layout.confirmed is True
     assert layout.model_action_dim == 32
+    assert layout.policy_action_dim == 18
     assert layout.sim_joint_names == AM_DP123_PI05_CONTROLLED_JOINT_NAMES
     assert layout.source_indices == AM_DP123_PI05_SOURCE_INDICES
     assert layout.zero_padding_indices == AM_DP123_PI05_ZERO_PADDING_INDICES
@@ -85,8 +89,10 @@ def test_default_layout_is_confirmed_32d_contract():
 def test_layout_rejects_wrong_width_mapping_and_padding():
     with pytest.raises(ValueError, match="must be 32"):
         AmDp123ActionLayout.from_dict(_layout_dict(model_action_dim=18))
+    with pytest.raises(ValueError, match="must be 18"):
+        AmDp123ActionLayout.from_dict(_layout_dict(policy_action_dim=32))
     with pytest.raises(ValueError, match="canonical AM-DP123 PI0.5 mapping"):
-        AmDp123ActionLayout.from_dict(_layout_dict(source_indices=list(range(20))))
+        AmDp123ActionLayout.from_dict(_layout_dict(source_indices=[0] * 20))
     with pytest.raises(ValueError, match="18 through 31"):
         AmDp123ActionLayout.from_dict(_layout_dict(zero_padding_indices=list(range(18, 31))))
 
@@ -109,27 +115,24 @@ def test_adapter_expands_each_gripper_scalar_to_mimic_pair():
     np.testing.assert_allclose(target[18:20], action[16:18], atol=1.0e-9)
 
 
-def test_adapter_ignores_all_zero_padding_entries():
+def test_adapter_rejects_internal_model_width_from_websocket():
     adapter = Pi05ActionAdapter(load_default_action_layout(), _CONTROL_DT)
     adapter.reset(_HOME)
-    baseline = _model_action_from_target(_HOME)
-    padded = baseline.copy()
-    padded[18:32] = np.linspace(-100.0, 100.0, 14)
-    np.testing.assert_allclose(adapter.adapt(padded), adapter.adapt(baseline), atol=1.0e-12)
+    with pytest.raises(ValueError, match="Policy action width 32"):
+        adapter.adapt(np.zeros(32))
 
 
 def test_adapter_rejects_invalid_actions_and_clamps_limits():
     adapter = Pi05ActionAdapter(load_default_action_layout(), _CONTROL_DT)
     adapter.reset(_HOME)
     with pytest.raises(ValueError):
-        adapter.adapt(np.zeros(31))
+        adapter.adapt(np.zeros(17))
     with pytest.raises(ValueError):
-        adapter.adapt(np.zeros((0, 32)))
+        adapter.adapt(np.zeros((0, 18)))
     with pytest.raises(ValueError):
-        adapter.adapt(np.full(32, np.nan))
+        adapter.adapt(np.full(18, np.nan))
 
-    unbounded = np.zeros(32)
-    unbounded[:18] = 100.0
+    unbounded = np.full(18, 100.0)
     fast = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict(velocity_scale=1.0e6)), _CONTROL_DT)
     fast.reset(_HOME)
     result = fast.adapt(unbounded)[0]
@@ -146,6 +149,7 @@ def test_controlled_state_indices_cover_arms_hands_and_head_only():
 
 def test_raw_state_converts_to_exact_18_plus_14_pi05_layout():
     raw = np.arange(23, dtype=np.float32)
+    policy_state = to_pi05_policy_state(raw)
     state = to_pi05_model_state(raw)
     raw_index = {name: index for index, name in enumerate(AM_DP123_STATE_JOINT_NAMES)}
     expected_names = (
@@ -157,12 +161,14 @@ def test_raw_state_converts_to_exact_18_plus_14_pi05_layout():
         "head_joint2",
     )
     expected = np.array([raw[raw_index[name]] for name in expected_names], dtype=np.float32)
+    assert policy_state.shape == (18,)
+    np.testing.assert_array_equal(policy_state, expected)
     assert state.shape == (32,)
     np.testing.assert_array_equal(state[:18], expected)
     np.testing.assert_array_equal(state[18:], np.zeros(14, dtype=np.float32))
 
 
-def test_observation_payload_has_32d_state_and_zero_padding():
+def test_observation_payload_matches_18d_norm_stats_contract():
     payload = build_pi05_observation(
         np.arange(23, dtype=np.float32),
         np.ones(23, dtype=np.float32),
@@ -170,11 +176,9 @@ def test_observation_payload_has_32d_state_and_zero_padding():
         "pick the cube",
     )
     keys = AM_DP123_PI05_OBSERVATION_KEYS
-    assert payload[keys["state"]].shape == (32,)
-    assert payload[keys["joint_velocity"]].shape == (32,)
+    assert payload[keys["state"]].shape == (18,)
+    assert payload[keys["joint_velocity"]].shape == (18,)
     assert payload[keys["state"]].dtype == np.float32
-    np.testing.assert_array_equal(payload[keys["state"]][18:], np.zeros(14, dtype=np.float32))
-    np.testing.assert_array_equal(payload[keys["joint_velocity"]][18:], np.zeros(14, dtype=np.float32))
 
 
 def test_observation_rejects_missing_camera_and_bad_raw_state():
@@ -205,7 +209,7 @@ def _episode_arrays(steps: int = 3) -> dict[str, np.ndarray]:
         "joint_pos": np.zeros((steps, 23), dtype=np.float32),
         "joint_vel": np.zeros((steps, 23), dtype=np.float32),
         "object_position": np.zeros((steps, 3), dtype=np.float32),
-        "model_action": np.zeros((steps, 32), dtype=np.float32),
+        "model_action": np.zeros((steps, 18), dtype=np.float32),
         "applied_joint_target": np.repeat(_HOME[None, :], steps, axis=0).astype(np.float32),
         "terminated": np.zeros(steps, dtype=bool),
         "truncated": np.zeros(steps, dtype=bool),
@@ -214,12 +218,12 @@ def _episode_arrays(steps: int = 3) -> dict[str, np.ndarray]:
     }
 
 
-def test_episode_validation_accepts_32d_model_and_20d_execution():
+def test_episode_validation_accepts_18d_policy_and_20d_execution():
     arrays = _episode_arrays()
     arrays["inference_valid"][1] = False
     arrays["inference_error"][1] = "TimeoutError: server unavailable"
     summary = validate_pi05_episode(arrays)
-    assert summary.model_action_dim == 32
+    assert summary.model_action_dim == 18
     assert summary.inference_failure_steps == 1
 
 

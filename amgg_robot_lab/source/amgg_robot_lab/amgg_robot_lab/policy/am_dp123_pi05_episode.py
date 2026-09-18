@@ -15,7 +15,7 @@ import numpy as np
 
 from amgg_robot_lab.contracts import AM_DP123_JOINT_SPECS, AM_DP123_STATE_DIM
 
-from .am_dp123_pi05_protocol import AM_DP123_PI05_CONTROLLED_JOINT_NAMES, AM_DP123_PI05_MODEL_DIM
+from .am_dp123_pi05_protocol import AM_DP123_PI05_CONTROLLED_JOINT_NAMES, AM_DP123_PI05_POLICY_DIM
 
 AM_DP123_PI05_EPISODE_REQUIRED_FIELDS = (
     "joint_pos",
@@ -89,9 +89,9 @@ def validate_pi05_episode(arrays: Mapping[str, np.ndarray]) -> Pi05EpisodeValida
             raise ValueError(f"{field} must have shape {expected}, got {actual}.")
 
     model_action = np.asarray(arrays["model_action"])
-    if model_action.shape != (steps, AM_DP123_PI05_MODEL_DIM):
+    if model_action.shape != (steps, AM_DP123_PI05_POLICY_DIM):
         raise ValueError(
-            f"model_action must have shape ({steps}, {AM_DP123_PI05_MODEL_DIM}), got {model_action.shape}."
+            f"model_action must have shape ({steps}, {AM_DP123_PI05_POLICY_DIM}), got {model_action.shape}."
         )
 
     for field in ("joint_pos", "joint_vel", "object_position", "model_action", "applied_joint_target"):

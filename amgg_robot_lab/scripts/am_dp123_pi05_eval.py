@@ -6,8 +6,8 @@
 """Run the AM-DP123 PI0.5 evaluation task with a mock or a remote OpenPI policy.
 
 The script parses its CLI before starting Isaac Sim, then steps the
-``Isaac-AM-DP123-Pi05-Eval-v0`` task at 30 Hz. The fixed 32-D model ABI contains 18
-physical controls and 14 ignored zero-padding entries. The physical controls expand
+``Isaac-AM-DP123-Pi05-Eval-v0`` task at 30 Hz. Its WebSocket ABI contains 18 physical
+controls; OpenPI pads these to the fixed 32-D model width. The physical controls expand
 to 20 URDF targets through the action-layout JSON and :class:`Pi05ActionAdapter`
 safety adapter. ``mock_hold`` and ``mock_sine`` validate the full observation, camera,
 stepping, and recording path without any model server; ``remote`` lazily depends on
@@ -47,7 +47,7 @@ from amgg_robot_lab.policy import (  # noqa: E402
     controlled_state_indices,
     load_action_layout,
     load_default_action_layout,
-    to_pi05_model_state,
+    to_pi05_policy_state,
     to_uint8_rgb,
 )
 
@@ -172,13 +172,16 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
     if args_cli.policy == "remote":
         from openpi_client import websocket_client_policy
 
+        print(f"[pi05] connecting to ws://{args_cli.host}:{args_cli.port}", flush=True)
         policy = websocket_client_policy.WebsocketClientPolicy(host=args_cli.host, port=args_cli.port)
+        print("[pi05] OpenPI WebSocket connected", flush=True)
         image_transform = _make_remote_image_transform()
 
     record_root = _record_root(args_cli) if not args_cli.no_record else None
     print(
         f"[pi05] task={args_cli.task} policy={args_cli.policy} layout={layout.path} "
-        f"model_action_dim={layout.model_action_dim} control_dt={AM_DP123_PI05_CONTROL_DT:.4f}s "
+        f"policy_action_dim={layout.policy_action_dim} model_action_dim={layout.model_action_dim} "
+        f"control_dt={AM_DP123_PI05_CONTROL_DT:.4f}s "
         f"record_root={record_root}",
         flush=True,
     )
@@ -187,12 +190,13 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
     episode_index = 0
     exit_reason = "max_steps_reached"
     payload_logged = False
+    action_chunk_logged = False
     obs, _ = env.reset()
     while total_steps < args_cli.max_steps:
         policy_obs = obs["policy"]
         state = as_numpy(policy_obs["robot_joint_pos"][0])
         adapter.reset(state[list(state_indices)])
-        sine_base = to_pi05_model_state(state).astype(np.float64)
+        sine_base = to_pi05_policy_state(state).astype(np.float64)
 
         recorder = _EpisodeRecorder(
             record_images=args_cli.record_images and record_root is not None,
@@ -223,6 +227,9 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
                             chunk = chunk[None, :]
                         if args_cli.action_horizon > 0:
                             chunk = chunk[: args_cli.action_horizon]
+                    if not action_chunk_logged:
+                        print(f"[pi05] policy action chunk: shape={chunk.shape}", flush=True)
+                        action_chunk_logged = True
                     targets = adapter.adapt(chunk)
                 except Exception as exc:
                     consecutive_failures += 1
@@ -234,7 +241,7 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
                         break
                     pending.append(
                         _PendingAction(
-                            model_action=np.zeros(layout.model_action_dim, dtype=np.float64),
+                            model_action=np.zeros(layout.policy_action_dim, dtype=np.float64),
                             target=adapter.current_target,
                             inference_valid=False,
                             inference_error=error,
@@ -292,7 +299,7 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
 
 
 def _observation_inputs(policy_obs: Mapping[str, Any]) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
-    """Return raw 23-D state/velocity and four frames for 32-D policy conversion."""
+    """Return raw 23-D state/velocity and four frames for 18-D policy conversion."""
     return (
         as_numpy(policy_obs["robot_joint_pos"][0]),
         as_numpy(policy_obs["robot_joint_vel"][0]),
@@ -335,7 +342,7 @@ def _mock_action(
             action[index] = sine_base[index] + _MOCK_SINE_AMPLITUDE_RAD[offset] * math.sin(phase)
         return action
     state = as_numpy(policy_obs["robot_joint_pos"][0])
-    return to_pi05_model_state(state).astype(np.float64)
+    return to_pi05_policy_state(state).astype(np.float64)
 
 
 def _make_remote_image_transform():
@@ -398,6 +405,7 @@ def _episode_metadata(args_cli: argparse.Namespace, layout: Any, env_cfg: Any, r
         "action_layout_path": str(layout.path) if layout.path is not None else None,
         "action_layout_sha256": layout.sha256(),
         "model_action_dim": layout.model_action_dim,
+        "policy_action_dim": layout.policy_action_dim,
         "state_joint_names": list(AM_DP123_PI05_STATE_JOINT_NAMES),
         "model_joint_names": list(AM_DP123_PI05_MODEL_JOINT_NAMES),
         "controlled_joint_names": list(AM_DP123_PI05_CONTROLLED_JOINT_NAMES),
