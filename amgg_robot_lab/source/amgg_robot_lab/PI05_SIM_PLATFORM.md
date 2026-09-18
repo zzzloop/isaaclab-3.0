@@ -123,7 +123,8 @@ IsaacLab 客户端需要 OpenPI 仓库中的轻量客户端。Isaac Lab 3.0 要�
 
 ```bash
 export PYTHONPATH="$HOME/zzk_data/openpi-bpx-pi05-finetune/packages/openpi-client/src${PYTHONPATH:+:$PYTHONPATH}"
-uv run python -c "from openpi_client import image_tools, websocket_client_policy; print('openpi client ok')"
+uv pip install --python "$CONDA_PREFIX/bin/python" "dm-tree>=0.1.8" "msgpack>=1.0.5" "pillow>=9" "websockets>=11"
+./isaaclab.sh -p -c "from openpi_client import image_tools, websocket_client_policy; print('openpi client ok')"
 ```
 
 服务端：
@@ -145,12 +146,14 @@ IsaacLab 客户端：
 ```bash
 conda activate isaaclab30
 cd ~/zzk_data/IsaacLab
+unset CUDA_VISIBLE_DEVICES
 export PYTHONPATH="$HOME/zzk_data/openpi-bpx-pi05-finetune/packages/openpi-client/src${PYTHONPATH:+:$PYTHONPATH}"
 
 uv run --extra viser python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
     --policy remote \
     --host 127.0.0.1 \
     --port 23789 \
+    --connect_timeout 30 \
     --prompt "pick up the orange cube and place it on the green target" \
     --action_layout amgg_robot_lab/source/amgg_robot_lab/amgg_robot_lab/policy/layouts/am_dp123_pi05_32_template.json \
     --action_horizon 8 \
@@ -188,7 +191,7 @@ model:     [WebSocket 18-D, zero_padding[0:14]]
 
 服务端输出应为 `action_dim: 32`、18 位 `DeltaActions/AbsoluteActions` mask、`state/actions` 归一化统计 `(18,)`。
 这表示 32 维是网络内部张量宽度，18 维是数据和 WebSocket 物理接口，二者同时正确。客户端成功时还会打印
-`OpenPI WebSocket connected`、`OpenPI payload` 中 18 维 state，以及 `policy action chunk: shape=(..., 18)`。
+`OpenPI TCP endpoint ready`、`OpenPI WebSocket connected`、`OpenPI payload` 中 18 维 state，以及 `policy action chunk: shape=(..., 18)`。客户端不要设置 `CUDA_VISIBLE_DEVICES`；直接用 `--device cuda:0`，避免 Omniverse 与 CUDA 的 GPU 编号不一致。
 
 OpenPI 客户端安装与远程推理接口参考：
 <https://github.com/Physical-Intelligence/openpi/blob/main/docs/remote_inference.md>。

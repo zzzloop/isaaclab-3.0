@@ -121,6 +121,7 @@ def test_evaluation_script_help_lists_the_policy_contract():
         "--policy",
         "--host",
         "--port",
+        "--connect_timeout",
         "--prompt",
         "--action_layout",
         "--action_horizon",

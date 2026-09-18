@@ -19,8 +19,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import socket
 import subprocess
 import sys
+import time
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -105,6 +107,14 @@ def _nonnegative_int(value: str) -> int:
     return parsed
 
 
+def _positive_float(value: str) -> float:
+    """Parse a strictly positive floating-point CLI value."""
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        raise argparse.ArgumentTypeError("value must be a positive finite number")
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser without any Isaac Sim import."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -117,6 +127,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--host", default="127.0.0.1", help="OpenPI WebSocket host for --policy remote.")
     parser.add_argument("--port", type=int, default=8000, help="OpenPI WebSocket port for --policy remote.")
+    parser.add_argument(
+        "--connect_timeout",
+        type=_positive_float,
+        default=30.0,
+        help="Seconds to wait for the OpenPI TCP endpoint before starting Isaac Sim.",
+    )
     parser.add_argument(
         "--prompt",
         default="pick up the orange cube and place it on the green target",
@@ -141,6 +157,36 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no_record", action="store_true", help="Disable episode recording entirely.")
     parser.add_argument("--image_stride", type=_positive_int, default=15, help="Record one image frame every N steps.")
     return parser
+
+
+def _preflight_remote_client(host: str, port: int, timeout: float) -> None:
+    """Validate the lightweight OpenPI client and wait for its TCP endpoint."""
+    print("[pi05] checking OpenPI client dependencies", flush=True)
+    try:
+        import msgpack  # noqa: F401
+        import websockets.sync.client  # noqa: F401
+        from openpi_client import (
+            image_tools,  # noqa: F401
+            websocket_client_policy,  # noqa: F401
+        )
+        from PIL import Image  # noqa: F401
+    except Exception as exc:
+        raise RuntimeError(
+            "OpenPI client import failed. Install dm-tree, msgpack, pillow, and websockets>=11 "
+            "in isaaclab30, then expose packages/openpi-client/src through PYTHONPATH."
+        ) from exc
+
+    deadline = time.monotonic() + timeout
+    last_error: OSError | None = None
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=min(2.0, timeout)):
+                print(f"[pi05] OpenPI TCP endpoint ready at {host}:{port}", flush=True)
+                return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+    raise ConnectionError(f"OpenPI server {host}:{port} was unreachable for {timeout:.1f}s") from last_error
 
 
 def _run_evaluation(args_cli: argparse.Namespace) -> None:
@@ -170,6 +216,7 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
     policy = None
     image_transform = to_uint8_rgb
     if args_cli.policy == "remote":
+        print(f"[pi05] importing OpenPI client for ws://{args_cli.host}:{args_cli.port}", flush=True)
         from openpi_client import websocket_client_policy
 
         print(f"[pi05] connecting to ws://{args_cli.host}:{args_cli.port}", flush=True)
@@ -497,6 +544,8 @@ def main() -> None:
     parser = _build_parser()
     AppLauncher.add_app_launcher_args(parser)
     args_cli = parser.parse_args()
+    if args_cli.policy == "remote":
+        _preflight_remote_client(args_cli.host, args_cli.port, args_cli.connect_timeout)
 
     app_launcher = AppLauncher(args_cli, enable_cameras=True)
     simulation_app = app_launcher.app
