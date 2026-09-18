@@ -2,7 +2,7 @@
 
 本文档面向 Ubuntu 22.04、Isaac Sim 6.1、Isaac Lab 3.0 和 `isaaclab30` 环境。平台只使用 AM-DP123
 URDF、四路仿真相机和 PI0.5 WebSocket 接口，不经过 PICO、Pink IK 或真机通信。WebSocket
-收发 18 个物理量；OpenPI 的 `BpxInputs` 在服务端把它们补成网络内部 32 维，`BpxOutputs` 再移除
+收发 18 个物理量；OpenPI 在服务端先按 18 维统计归一化，再由 `PadStatesAndActions` 补成网络内部 32 维，`BpxOutputs` 再移除
 14 个保留维。18 个物理动作在仿真内部展开为 20 个 URDF 目标。
 
 ## 1. 更新代码与进入环境
@@ -170,7 +170,7 @@ WebSocket: [left_arm[0:7], left_gripper, right_arm[0:7], right_gripper, head_pan
 model:     [WebSocket 18-D, zero_padding[0:14]]
 ```
 
-索引 18–31 由 OpenPI 服务端 `BpxInputs` 补零，`BpxOutputs` 只向客户端返回前 18 个物理动作。底盘、腰部和
+索引 18–31 由 OpenPI 服务端模型变换 `PadStatesAndActions` 补零，`BpxOutputs` 只向客户端返回前 18 个物理动作。底盘、腰部和
 夹爪 mimic 关节不占 PI0.5 维度。夹爪标量采用 URDF 主手指角度 [rad]：`0.0` 为张开，
 `-0.32` 为闭合；适配层将一个标量展开为主手指 `q` 和 mimic 手指 `-q`。如果真实数据中的
 `grippers[i].position` 使用电机角度、开口宽度或归一化值，应在 OpenPI 数据 transform 中先换算成

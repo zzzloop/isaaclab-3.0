@@ -199,7 +199,7 @@ PICO、Pink IK、`isaaclab_teleop` 或 CloudXR，因此 PI0.5 任务可在未安
 
 * 任务：`Isaac-AM-DP123-Pi05-Eval-v0`（`AmDp123Pi05EvalEnvCfg`）。
 * Isaac Lab 内部观测 23 个 URDF 关节；WebSocket 发送 18 维物理状态：左臂 7 + 左夹爪 1 +
-  右臂 7 + 右夹爪 1 + 头部 2。OpenPI 服务端的 `BpxInputs` 再补成模型内部 32 维。
+  右臂 7 + 右夹爪 1 + 头部 2。OpenPI 服务端先按 18 维统计归一化，再由模型变换 `PadStatesAndActions` 补成内部 32 维。
 * PI0.5 的 18 个物理动作在适配层展开成 20 个 URDF 目标：每个夹爪标量驱动主手指 `q` 和
   mimic 手指 `-q`。动作项为官方 `mdp.JointPositionActionCfg`
   （`preserve_order=True`、`use_default_offset=False`、逐关节 `clip`）。

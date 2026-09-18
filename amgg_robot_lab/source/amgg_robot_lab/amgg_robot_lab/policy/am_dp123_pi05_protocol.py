@@ -9,9 +9,9 @@ This module deliberately depends only on NumPy and :mod:`amgg_robot_lab.contract
 observation conversion, the action-layout JSON schema, and the safety adapter can be
 tested offline on Windows without Isaac Sim, Torch, OpenPI, or a WebSocket client.
 
-The OpenPI WebSocket contract contains 18 physical values. The BPX server transforms
-pad those values to the model's 32-D internal width and remove the 14 reserved entries
-again before returning actions. The layout expands the two single-value grippers to
+The OpenPI WebSocket contract contains 18 physical values. The server normalizes those
+values before its model transform pads them to the 32-D internal width; output transforms
+remove the 14 reserved entries again before returning actions. The layout expands the two single-value grippers to
 their URDF mimic pairs.
 """
 
@@ -152,8 +152,8 @@ def to_pi05_policy_state(joint_state: object) -> np.ndarray:
 def to_pi05_model_state(joint_state: object) -> np.ndarray:
     """Build the 32-D internal model state for diagnostics and transform tests.
 
-    Runtime WebSocket payloads must use :func:`to_pi05_policy_state`; ``BpxInputs``
-    performs this padding on the OpenPI server.
+    Runtime WebSocket payloads must use :func:`to_pi05_policy_state`; OpenPI's model
+    transform performs this padding on the server after normalization.
     """
     model = np.zeros(AM_DP123_PI05_MODEL_DIM, dtype=np.float32)
     model[:AM_DP123_PI05_POLICY_DIM] = to_pi05_policy_state(joint_state)
