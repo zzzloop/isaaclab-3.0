@@ -31,5 +31,5 @@
   "scale": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 1.0],
   "offset": 0.0,
   "velocity_scale": 0.5,
-  "notes": "Confirmed AM-DP123 PI0.5 contract: the WebSocket policy interface has 18 physical values; the server model transform pads them to the internal 32-D width and BpxOutputs returns 18 values. Each gripper source expands to its driving URDF joint q and mimic joint -q."
+  "notes": "Confirmed AM-DP123 PI0.5 contract: requests carry 18 physical values, the server pads them to 32-D internally, and BpxOutputs returns raw 23-D BPX actions. The client collapses raw actions to 18 physical values before each gripper expands to its driving URDF joint q and mimic joint -q."
 }

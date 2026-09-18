@@ -15,6 +15,7 @@ import sys
 import tomllib
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from amgg_robot_lab import tasks
@@ -142,3 +143,31 @@ def test_terminal_recording_uses_final_observation():
     assert module._record_policy_observation(reset_obs, {}, False) is reset_obs
     with pytest.raises(RuntimeError, match="final_obs"):
         module._record_policy_observation(reset_obs, {}, True)
+
+
+def test_remote_image_transform_center_crops_before_resizing():
+    """The policy image path removes both side margins without stretching."""
+    pytest.importorskip("PIL")
+    module = _load_eval_module()
+    image = np.zeros((4, 8, 3), dtype=np.uint8)
+    image[:, :2, 0] = 255
+    image[:, 2:6, 1] = 255
+    image[:, 6:, 2] = 255
+    transformed = module._make_remote_image_transform()(image)
+    assert transformed.shape == (224, 224, 3)
+    assert transformed.dtype == np.uint8
+    assert transformed[..., 1].min() == 255
+    assert transformed[..., 0].max() == 0
+    assert transformed[..., 2].max() == 0
+
+
+def test_remote_response_uses_the_bpx_raw_action_order():
+    """The runnable client must collapse BpxOutputs before adapting actions."""
+    module = _load_eval_module()
+    raw = np.arange(23, dtype=np.float32)
+    chunk = module._extract_policy_action_chunk({"actions": raw[None, :]})
+    expected = np.concatenate((raw[3:10], [21], raw[12:19], [39], raw[21:23]))
+    assert chunk.shape == (1, 18)
+    np.testing.assert_array_equal(chunk[0], expected)
+    with pytest.raises(ValueError, match="contain an 'actions'"):
+        module._extract_policy_action_chunk({"wrong": raw})

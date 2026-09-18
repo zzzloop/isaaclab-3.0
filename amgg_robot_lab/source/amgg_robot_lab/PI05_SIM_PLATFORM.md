@@ -1,9 +1,9 @@
 # AM-DP123 PI0.5 仿真验证平台使用说明
 
 本文档面向 Ubuntu 22.04、Isaac Sim 6.1、Isaac Lab 3.0 和 `isaaclab30` 环境。平台只使用 AM-DP123
-URDF、四路仿真相机和 PI0.5 WebSocket 接口，不经过 PICO、Pink IK 或真机通信。WebSocket
-收发 18 个物理量；OpenPI 在服务端先按 18 维统计归一化，再由 `PadStatesAndActions` 补成网络内部 32 维，`BpxOutputs` 再移除
-14 个保留维。18 个物理动作在仿真内部展开为 20 个 URDF 目标。
+URDF、四路仿真相机和 PI0.5 WebSocket 接口，不经过 PICO、Pink IK 或真机通信。策略只发送左目和双腕三路图像及
+18 维 `qpos`；OpenPI 按 18 维统计归一化，再由 `PadStatesAndActions` 补成网络内部 32 维。`BpxOutputs`
+返回训练数据顺序的 23 维动作，客户端折叠回 18 维后在仿真内部展开为 20 个 URDF 目标。
 
 ## 1. 更新代码与进入环境
 
@@ -166,15 +166,29 @@ uv run --extra viser python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
 ```
 
 `am_dp123_pi05_32_template.json` 已按二代机器人契约确认，并且是默认布局；命令可省略
-`--action_layout`。WebSocket 侧状态和动作必须使用下列 18 维物理顺序；模型侧在其后补 14 个零：
+`--action_layout`。请求中的 `qpos` 和客户端折叠后的动作使用下列 18 维物理顺序；模型侧在其后补 14 个零：
+
+客户端发送的原始 BPX payload 为：
 
 ```text
-WebSocket: [left_arm[0:7], left_gripper, right_arm[0:7], right_gripper, head_pan, head_tilt]
-model:     [WebSocket 18-D, zero_padding[0:14]]
+qpos: 18-D float32
+images.left_eye:    head_left   -> center crop -> 224x224 uint8 RGB
+images.left_wrist:  left_wrist  -> center crop -> 224x224 uint8 RGB
+images.right_wrist: right_wrist -> center crop -> 224x224 uint8 RGB
+prompt: str
 ```
 
-索引 18–31 由 OpenPI 服务端模型变换 `PadStatesAndActions` 补零，`BpxOutputs` 只向客户端返回前 18 个物理动作。底盘、腰部和
-夹爪 mimic 关节不占 PI0.5 维度。夹爪标量采用 URDF 主手指角度 [rad]：`0.0` 为张开，
+Isaac Lab 场景仍创建左右目和双腕四路相机，方便双目调试与完整记录；PI0.5 不发送 `head_right`。中央正方形裁剪后再缩放，
+不会拉伸原图比例，也与真机“左目 + 双腕”三路输入一致。
+
+```text
+effective: [left_arm[0:7], left_gripper, right_arm[0:7], right_gripper, head_pan, head_tilt]
+model:     [effective 18-D, zero_padding[0:14]]
+```
+
+索引 18–31 由 OpenPI 服务端模型变换 `PadStatesAndActions` 补零。`BpxOutputs` 返回
+`[waist3, left_arm7, left_gripper2, right_arm7, right_gripper2, head2]`；客户端丢弃腰部并对每个夹爪的两个槽求和。
+底盘、腰部和夹爪 mimic 关节不占 PI0.5 有效维度。夹爪标量采用 URDF 主手指角度 [rad]：`0.0` 为张开，
 `-0.32` 为闭合；适配层将一个标量展开为主手指 `q` 和 mimic 手指 `-q`。如果真实数据中的
 `grippers[i].position` 使用电机角度、开口宽度或归一化值，应在 OpenPI 数据 transform 中先换算成
 这个主手指角度，不能在 32 维向量中追加第二根手指。
@@ -183,15 +197,16 @@ model:     [WebSocket 18-D, zero_padding[0:14]]
 
 - 所有执行目标经过关节位置限位和逐 step 速度限位。
 - reset 后的速度限位从实测关节位置开始。
-- 观测、图像处理、WebSocket、返回值或动作适配失败时保持上一安全目标。
-- 连续 5 次失败后退出，避免无限重试。
-- episode 中的 `model_action` 字段保存 18 维服务端物理动作；失败 step 是零占位，必须结合 `inference_valid=false` 和 `inference_error` 解读。
+- 远端观测、图像处理、WebSocket、返回值或动作适配失败时立即非零退出，不会复用已关闭的连接。
+- episode 中的 `model_action` 字段保存客户端折叠后的 18 维物理动作。
 - episode 终止行使用 reset 前的 `final_obs`，不会混入下一 episode 的初始状态。
 - 仿真相机参数不是实际相机标定结果；真机部署前仍需统一相机标定、状态/动作归一化、控制频率和延迟。
 
 服务端输出应为 `action_dim: 32`、18 位 `DeltaActions/AbsoluteActions` mask、`state/actions` 归一化统计 `(18,)`。
-这表示 32 维是网络内部张量宽度，18 维是数据和 WebSocket 物理接口，二者同时正确。客户端成功时还会打印
-`OpenPI TCP endpoint ready`、`OpenPI WebSocket connected`、`OpenPI payload` 中 18 维 state，以及 `policy action chunk: shape=(..., 18)`。客户端不要设置 `CUDA_VISIBLE_DEVICES`；直接用 `--device cuda:0`，避免 Omniverse 与 CUDA 的 GPU 编号不一致。
+这表示 32 维是网络内部张量宽度，18 维是归一化统计和有效物理接口。客户端成功时会打印
+`OpenPI TCP endpoint ready`、`OpenPI WebSocket connected`、`OpenPI payload` 中 `qpos: (18,)` 及三路
+`224×224×3` 图像，以及折叠后的 `policy action chunk: shape=(..., 18)`。客户端不要设置 `CUDA_VISIBLE_DEVICES`；
+直接用 `--device cuda:0`，避免 Omniverse 与 CUDA 的 GPU 编号不一致。
 
 OpenPI 客户端安装与远程推理接口参考：
 <https://github.com/Physical-Intelligence/openpi/blob/main/docs/remote_inference.md>。

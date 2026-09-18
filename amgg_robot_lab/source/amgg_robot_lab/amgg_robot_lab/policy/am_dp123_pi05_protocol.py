@@ -9,10 +9,10 @@ This module deliberately depends only on NumPy and :mod:`amgg_robot_lab.contract
 observation conversion, the action-layout JSON schema, and the safety adapter can be
 tested offline on Windows without Isaac Sim, Torch, OpenPI, or a WebSocket client.
 
-The OpenPI WebSocket contract contains 18 physical values. The server normalizes those
-values before its model transform pads them to the 32-D internal width; output transforms
-remove the 14 reserved entries again before returning actions. The layout expands the two single-value grippers to
-their URDF mimic pairs.
+The OpenPI request contains 18 physical values. The server normalizes those values before
+its model transform pads them to the 32-D internal width. Its BPX output transform expands
+the prediction to the training data's raw 23-D order; this module collapses that response
+back to 18 physical values before the layout expands each gripper to its URDF mimic pair.
 """
 
 from __future__ import annotations
@@ -46,7 +46,10 @@ AM_DP123_PI05_REAL_DIM = 18
 """Number of PI0.5 entries with physical meaning."""
 
 AM_DP123_PI05_POLICY_DIM = AM_DP123_PI05_REAL_DIM
-"""Width sent to and returned by the configured OpenPI WebSocket policy."""
+"""Width sent to the policy and consumed by the simulation action adapter."""
+
+AM_DP123_PI05_SERVER_ACTION_DIM = 23
+"""Raw action width returned by the configured OpenPI ``BpxOutputs`` transform."""
 
 AM_DP123_PI05_MODEL_JOINT_NAMES: tuple[str, ...] = (
     *AM_DP123_ARM_JOINT_NAMES[:7],
@@ -67,24 +70,30 @@ AM_DP123_PI05_CONTROLLED_JOINT_NAMES = AM_DP123_ARM_JOINT_NAMES + AM_DP123_HAND_
 AM_DP123_PI05_SOURCE_INDICES = (*range(7), *range(8, 15), 7, 7, 15, 15, 16, 17)
 """PI0.5 action entry selected for each internal URDF target."""
 
-AM_DP123_PI05_REQUIRED_CAMERAS: tuple[str, str, str, str] = (
+AM_DP123_PI05_CAPTURE_CAMERAS: tuple[str, str, str, str] = (
     "head_left",
     "head_right",
     "left_wrist",
     "right_wrist",
 )
-"""Camera names the OpenPI payload requires; the order fixes the payload keys."""
+"""All cameras captured by the Isaac Lab scene and available for recording."""
+
+AM_DP123_PI05_REQUIRED_CAMERAS: tuple[str, str, str] = (
+    "head_left",
+    "left_wrist",
+    "right_wrist",
+)
+"""Three cameras consumed by the BPX policy: left eye and both wrists."""
 
 AM_DP123_PI05_OBSERVATION_KEYS: dict[str, str] = {
-    "image": "observation/image",
-    "image_right": "observation/image_right",
-    "wrist_image": "observation/wrist_image",
-    "wrist_image_right": "observation/wrist_image_right",
-    "state": "observation/state",
-    "joint_velocity": "observation/joint_velocity",
+    "state": "qpos",
+    "images": "images",
+    "head_left": "left_eye",
+    "left_wrist": "left_wrist",
+    "right_wrist": "right_wrist",
     "prompt": "prompt",
 }
-"""Stable OpenPI payload keys, including the left/right extension keys."""
+"""Raw dictionary keys accepted by the OpenPI ``BpxInputs`` transform."""
 
 AM_DP123_PI05_ABSOLUTE_MODE = "absolute_joint_position"
 AM_DP123_PI05_DELTA_MODE = "delta_joint_position"
@@ -160,6 +169,53 @@ def to_pi05_model_state(joint_state: object) -> np.ndarray:
     return model
 
 
+def from_bpx_server_actions(actions: object) -> np.ndarray:
+    """Collapse BPX server actions to the physical 18-D policy representation.
+
+    The BPX server returns its raw training order: three fixed waist values, seven
+    left-arm values, two left-gripper slots, seven right-arm values, two
+    right-gripper slots, and two head values. Each gripper pair is summed to recover
+    the physical one-DoF command. Already-effective 18-D values are accepted for
+    compatibility with servers that omit ``BpxOutputs``.
+
+    Args:
+        actions: One action or an action chunk whose final dimension is 18 or 23.
+
+    Returns:
+        Contiguous action array with final dimension 18.
+
+    Raises:
+        ValueError: If the input is scalar, has an unsupported width, or contains a
+            non-finite value.
+    """
+    array = np.asarray(as_numpy(actions))
+    if array.ndim == 0:
+        raise ValueError("Expected a BPX action vector or chunk, got a scalar.")
+    if not np.all(np.isfinite(array)):
+        raise ValueError("BPX server actions contain non-finite values.")
+    if array.shape[-1] == AM_DP123_PI05_POLICY_DIM:
+        return np.ascontiguousarray(array)
+    if array.shape[-1] != AM_DP123_PI05_SERVER_ACTION_DIM:
+        raise ValueError(
+            f"Expected BPX server action width {AM_DP123_PI05_SERVER_ACTION_DIM} (raw) or "
+            f"{AM_DP123_PI05_POLICY_DIM} (effective), got shape {array.shape}."
+        )
+
+    left_gripper = array[..., 10:12].sum(axis=-1, keepdims=True)
+    right_gripper = array[..., 19:21].sum(axis=-1, keepdims=True)
+    effective = np.concatenate(
+        (
+            array[..., 3:10],
+            left_gripper,
+            array[..., 12:19],
+            right_gripper,
+            array[..., 21:23],
+        ),
+        axis=-1,
+    )
+    return np.ascontiguousarray(effective)
+
+
 def to_uint8_rgb(image: object) -> np.ndarray:
     """Convert a camera frame to a contiguous ``uint8`` RGB array.
 
@@ -201,22 +257,24 @@ def build_pi05_observation(
     Args:
         joint_pos: Raw 23-D joint positions [rad] ordered like
             :data:`AM_DP123_PI05_STATE_JOINT_NAMES`.
-        joint_vel: Raw 23-D joint velocities [rad/s] in the same order.
+        joint_vel: Raw 23-D joint velocities [rad/s] in the same order. The BPX
+            policy does not consume velocity, but it is validated here so malformed
+            simulator observations fail before inference.
         images: Mapping keyed by :data:`AM_DP123_PI05_REQUIRED_CAMERAS`.
         prompt: Task instruction sent verbatim to OpenPI.
         image_transform: Optional per-image conversion. Defaults to
             :func:`to_uint8_rgb`. Remote runs pass an OpenPI-backed transform that
-            resizes with padding to 224x224.
+            center-crops without aspect-ratio distortion and resizes to 224x224.
 
     Returns:
-        Payload dict with the canonical OpenPI keys.
+        Raw BPX payload containing an effective 18-D ``qpos`` and three images.
 
     Raises:
         ValueError: If a camera is missing, a state vector has the wrong shape, or a
             state value is not finite.
     """
     state = to_pi05_policy_state(joint_pos)
-    velocity = to_pi05_policy_state(joint_vel)
+    to_pi05_policy_state(joint_vel)
 
     if not isinstance(prompt, str):
         raise ValueError("OpenPI prompt must be a string.")
@@ -230,12 +288,12 @@ def build_pi05_observation(
         converted[camera] = transform(images[camera])
 
     return {
-        keys["image"]: converted["head_left"],
-        keys["image_right"]: converted["head_right"],
-        keys["wrist_image"]: converted["left_wrist"],
-        keys["wrist_image_right"]: converted["right_wrist"],
         keys["state"]: state,
-        keys["joint_velocity"]: velocity,
+        keys["images"]: {
+            keys["head_left"]: converted["head_left"],
+            keys["left_wrist"]: converted["left_wrist"],
+            keys["right_wrist"]: converted["right_wrist"],
+        },
         keys["prompt"]: prompt,
     }
 
@@ -270,7 +328,7 @@ class AmDp123ActionLayout:
         schema_version: Layout schema version. Only version ``1`` is supported.
         confirmed: ``False`` marks a template whose model semantics are unverified.
         model_action_dim: Width used internally by the PI0.5 network.
-        policy_action_dim: Width returned by the server after ``BpxOutputs``.
+        policy_action_dim: Effective width consumed after collapsing ``BpxOutputs``.
         mode: ``absolute_joint_position`` or ``delta_joint_position``.
         sim_joint_names: Simulation joint order the selected entries command. It must
             equal :data:`AM_DP123_PI05_CONTROLLED_JOINT_NAMES`.
@@ -576,6 +634,7 @@ class Pi05ActionAdapter:
 __all__ = [
     "AM_DP123_PI05_32_TEMPLATE_PATH",
     "AM_DP123_PI05_ABSOLUTE_MODE",
+    "AM_DP123_PI05_CAPTURE_CAMERAS",
     "AM_DP123_PI05_ACTION_MODES",
     "AM_DP123_PI05_CONTROLLED_JOINT_NAMES",
     "AM_DP123_PI05_DEFAULT_LAYOUT_PATH",
@@ -587,6 +646,7 @@ __all__ = [
     "AM_DP123_PI05_POLICY_DIM",
     "AM_DP123_PI05_REQUIRED_CAMERAS",
     "AM_DP123_PI05_REAL_DIM",
+    "AM_DP123_PI05_SERVER_ACTION_DIM",
     "AM_DP123_PI05_SOURCE_INDICES",
     "AM_DP123_PI05_STATE_JOINT_NAMES",
     "AM_DP123_PI05_ZERO_PADDING_INDICES",
@@ -596,6 +656,7 @@ __all__ = [
     "as_numpy",
     "build_pi05_observation",
     "controlled_state_indices",
+    "from_bpx_server_actions",
     "load_action_layout",
     "load_default_action_layout",
     "to_pi05_model_state",

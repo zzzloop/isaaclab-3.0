@@ -204,8 +204,8 @@ PICO、Pink IK、`isaaclab_teleop` 或 CloudXR，因此 PI0.5 任务可在未安
   mimic 手指 `-q`。动作项为官方 `mdp.JointPositionActionCfg`
   （`preserve_order=True`、`use_default_offset=False`、逐关节 `clip`）。
 * 频率 30 Hz（`sim.dt = 1/120`、`decimation = 4`、`render_interval = 2`），单环境。
-* 模型网络宽度固定为 32 维，WebSocket 返回经过 `BpxOutputs` 和 `AbsoluteActions` 处理后的
-  18 维物理动作。默认布局 `policy/layouts/am_dp123_pi05_32_template.json` 同时记录
+* 模型网络宽度固定为 32 维。`BpxOutputs` 将 18 维物理动作展开为训练数据使用的 23 维原始顺序；
+  客户端按同一规则重新折叠为 18 维。默认布局 `policy/layouts/am_dp123_pi05_32_template.json` 同时记录
   `model_action_dim=32`、`policy_action_dim=18` 和模型内部保留索引 18–31。
 
 | PI0.5 索引 | 物理量 |
@@ -226,29 +226,28 @@ PICO、Pink IK、`isaaclab_teleop` 或 CloudXR，因此 PI0.5 任务可在未安
 
 | payload key | 内容 |
 | --- | --- |
-| `observation/image` | `head_left` 640×480 RGB |
-| `observation/image_right` | `head_right` RGB（稳定扩展键，双臂/双目） |
-| `observation/wrist_image` | `left_wrist` RGB |
-| `observation/wrist_image_right` | `right_wrist` RGB（稳定扩展键） |
-| `observation/state` | 18 维未归一化 `float32` 物理状态 |
-| `observation/joint_velocity` | 相同顺序的 18 维速度 |
+| `qpos` | 18 维未归一化 `float32` 物理状态 |
+| `images.left_eye` | `head_left` RGB |
+| `images.left_wrist` | `left_wrist` RGB |
+| `images.right_wrist` | `right_wrist` RGB |
 | `prompt` | 任务指令原文 |
 
-图像统一转为连续 `uint8` RGB（RGBA 去 alpha，浮点 `[0,1]` 映射到 `0–255`）；状态不在客户端
-归一化，归一化由 OpenPI 服务端训练配置处理。`--policy remote` 时使用
-`openpi_client.image_tools.resize_with_pad(..., 224, 224)` 与 `convert_to_uint8()`；
+仿真仍创建并可记录四路相机，但策略只发送与真机一致的左目、左腕和右腕。图像统一转为连续
+`uint8` RGB（RGBA 去 alpha，浮点 `[0,1]` 映射到 `0–255`），先从中央裁成正方形，再用双线性插值缩放到
+224×224，因此不会拉伸宽高比；右目不发给 PI0.5。状态不在客户端归一化，归一化由 OpenPI 服务端处理。
 `openpi_client` 只在 remote 模式延迟导入，不是 `amgg_robot_lab` 的强制依赖。
 
 ### 动作安全适配器
 
-`Pi05ActionAdapter` 把服务端返回的 `(T, 18)` 或 `(18,)` 映射为 20 维绝对 URDF 关节目标：
+服务端先返回 `(T, 23)` 原始 BPX 动作：腰 3 + 左臂 7 + 左夹爪 2 + 右臂 7 + 右夹爪 2 + 头 2。
+客户端丢弃腰部、分别求和两个夹爪槽，得到 `(T, 18)`；`Pi05ActionAdapter` 再映射为 20 维绝对 URDF 目标：
 
 1. 校验 chunk 非空、无 NaN/Inf、宽度等于 `policy_action_dim=18`；
 2. 把两个夹爪标量各展开到一对相反方向的手指关节；模型内部 18–31 不出现在 WebSocket 返回值中；
 3. `absolute_joint_position` 直接取目标，`delta_joint_position` 从上一目标累加；
 4. 按 `AM_DP123_JOINT_SPECS` 做位置限位；
 5. 按 `max_velocity_rad_s * control_dt * velocity_scale` 做逐步速度限位；
-6. reset 后从当前关节位置起限速，不从零开始；协议或推理失败时保持当前目标。
+6. reset 后从当前关节位置起限速，不从零开始；远端协议或推理失败时立即以非零状态退出。
 
 ### 运行命令
 
@@ -291,8 +290,8 @@ uv run python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
     --kit_args "--/renderer/multiGpu/enabled=false"
 ```
 
-> 物理 18 维顺序和模型内部 32 维宽度已经固定。remote 服务若返回的物理动作不是 18 维会进入安全失败路径；连续失败
-> `MAX_CONSECUTIVE_INFERENCE_FAILURES` 次后退出，不会无限高速重试。
+> 物理 18 维顺序和模型内部 32 维宽度已经固定。remote 服务返回 23 维 BPX 原始动作，客户端折叠后必须为
+> 18 维；任一协议、连接或数值错误都会立即非零退出，不会在已关闭的 WebSocket 上继续运行。
 
 ### 记录格式
 
@@ -300,16 +299,14 @@ uv run python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
 
 * `episode_XXXXXX.npz`：`joint_pos (N,23)`、`joint_vel (N,23)`、`object_position (N,3)`、
   `model_action (N,18)`（服务端后处理后的物理动作）、`applied_joint_target (N,20)`、`terminated (N,)`、`truncated (N,)`、
-  `inference_valid (N,)` 和 `inference_error (N,)`。协议或推理失败时执行上一安全目标，零占位动作必须结合
-  `inference_valid=false` 解读，不能视为模型输出。
+  `inference_valid (N,)` 和 `inference_error (N,)`。
 * `episode_XXXXXX.json`：task id、prompt、policy mode、remote host/port、action layout 路径与
   SHA-256、state/controlled 关节名、control dt、Git commit、步数与终止原因。
 * `--record_images` 时另存 `episode_XXXXXX_images.npz`：默认每 15 步一帧（`--image_stride`），
   最多 120 帧，避免无界内存积累；不引入视频编码依赖。
 
 终止 step 使用 IsaacLab `extras["final_obs"]` 保存 reset 前的最终状态和图像，避免把下一 episode 的 reset
-状态写进上一 episode。观测构建、图像变换、WebSocket 推理、返回值解析和动作适配统一进入安全失败边界；
-连续 5 次失败后退出。
+状态写进上一 episode。远端观测构建、图像变换、WebSocket 推理、返回值解析或动作适配失败时立即退出并返回非零状态。
 
 ### Episode 验收与回放
 

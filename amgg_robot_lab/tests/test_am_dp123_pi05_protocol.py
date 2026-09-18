@@ -26,6 +26,7 @@ from amgg_robot_lab.policy import (
     Pi05ActionAdapter,
     build_pi05_observation,
     controlled_state_indices,
+    from_bpx_server_actions,
     load_default_action_layout,
     to_pi05_model_state,
     to_pi05_policy_state,
@@ -168,17 +169,50 @@ def test_raw_state_converts_to_exact_18_plus_14_pi05_layout():
     np.testing.assert_array_equal(state[18:], np.zeros(14, dtype=np.float32))
 
 
+def test_bpx_raw_server_actions_collapse_to_effective_order():
+    raw = np.arange(23, dtype=np.float32)
+    effective = from_bpx_server_actions(raw)
+    expected = np.concatenate((raw[3:10], [raw[10] + raw[11]], raw[12:19], [raw[19] + raw[20]], raw[21:23]))
+    assert effective.shape == (18,)
+    np.testing.assert_array_equal(effective, expected)
+
+    chunk = from_bpx_server_actions(np.stack((raw, raw + 100)))
+    assert chunk.shape == (2, 18)
+    np.testing.assert_array_equal(chunk[0], expected)
+
+
+def test_bpx_server_action_conversion_validates_width_and_values():
+    effective = np.arange(18, dtype=np.float32)
+    assert from_bpx_server_actions(effective) is effective
+    with pytest.raises(ValueError, match="width 23"):
+        from_bpx_server_actions(np.zeros(22))
+    with pytest.raises(ValueError, match="non-finite"):
+        from_bpx_server_actions(np.full(23, np.nan))
+
+
 def test_observation_payload_matches_18d_norm_stats_contract():
+    images = _images()
+    images["head_right"] = np.zeros((4, 5, 3), dtype=np.uint8)
+    images["head_left"].fill(11)
+    images["head_right"].fill(22)
+    images["left_wrist"].fill(33)
+    images["right_wrist"].fill(44)
     payload = build_pi05_observation(
         np.arange(23, dtype=np.float32),
         np.ones(23, dtype=np.float32),
-        _images(),
+        images,
         "pick the cube",
     )
     keys = AM_DP123_PI05_OBSERVATION_KEYS
     assert payload[keys["state"]].shape == (18,)
-    assert payload[keys["joint_velocity"]].shape == (18,)
     assert payload[keys["state"]].dtype == np.float32
+    assert set(payload) == {"qpos", "images", "prompt"}
+    assert set(payload["images"]) == {"left_eye", "left_wrist", "right_wrist"}
+    assert payload["images"]["left_eye"].shape == (4, 5, 3)
+    assert int(payload["images"]["left_eye"][0, 0, 0]) == 11
+    assert int(payload["images"]["left_wrist"][0, 0, 0]) == 33
+    assert int(payload["images"]["right_wrist"][0, 0, 0]) == 44
+    assert AM_DP123_PI05_REQUIRED_CAMERAS == ("head_left", "left_wrist", "right_wrist")
 
 
 def test_observation_rejects_missing_camera_and_bad_raw_state():

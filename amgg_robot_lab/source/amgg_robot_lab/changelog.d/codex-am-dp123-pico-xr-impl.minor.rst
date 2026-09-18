@@ -44,6 +44,10 @@ Fixed
 * Fixed the missing episode acceptance path by adding offline validation and
   simulator replay for recorded PI0.5 joint targets.
 
+* Fixed the BPX remote policy protocol to send the trained left-eye and dual-wrist
+  image layout, center-crop images to 224×224, and decode the server's raw 23-D
+  actions into the effective 18-D robot control order.
+
 * Fixed the Isaac Lab 3.0 base quaternion so the AM-DP123 starts upright.
 * Fixed right-hand trigger routing.
 * Fixed PICO arm control by rebasing controller motion at Play, targeting the

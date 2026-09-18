@@ -6,12 +6,13 @@
 """Run the AM-DP123 PI0.5 evaluation task with a mock or a remote OpenPI policy.
 
 The script parses its CLI before starting Isaac Sim, then steps the
-``Isaac-AM-DP123-Pi05-Eval-v0`` task at 30 Hz. Its WebSocket ABI contains 18 physical
-controls; OpenPI pads these to the fixed 32-D model width. The physical controls expand
+``Isaac-AM-DP123-Pi05-Eval-v0`` task at 30 Hz. Requests contain 18 physical controls;
+OpenPI pads these to the fixed 32-D model width and returns raw 23-D BPX actions. The client
+collapses them back to 18 physical controls, which expand
 to 20 URDF targets through the action-layout JSON and :class:`Pi05ActionAdapter`
 safety adapter. ``mock_hold`` and ``mock_sine`` validate the full observation, camera,
 stepping, and recording path without any model server; ``remote`` lazily depends on
-``openpi_client`` and keeps the last bounded target whenever inference fails.
+``openpi_client`` and exits with an error instead of continuing after inference fails.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ if str(_EXTENSION_SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(_EXTENSION_SOURCE_ROOT))
 
 from amgg_robot_lab.policy import (  # noqa: E402
+    AM_DP123_PI05_CAPTURE_CAMERAS,
     AM_DP123_PI05_CONTROLLED_JOINT_NAMES,
     AM_DP123_PI05_MODEL_JOINT_NAMES,
     AM_DP123_PI05_REQUIRED_CAMERAS,
@@ -47,6 +49,7 @@ from amgg_robot_lab.policy import (  # noqa: E402
     as_numpy,
     build_pi05_observation,
     controlled_state_indices,
+    from_bpx_server_actions,
     load_action_layout,
     load_default_action_layout,
     to_pi05_policy_state,
@@ -269,9 +272,8 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
                             AM_DP123_PI05_CONTROL_DT,
                         )[None, :]
                     else:
-                        chunk = as_numpy(policy.infer(payload)["actions"]).astype(np.float64, copy=False)
-                        if chunk.ndim == 1:
-                            chunk = chunk[None, :]
+                        response = policy.infer(payload)
+                        chunk = _extract_policy_action_chunk(response)
                         if args_cli.action_horizon > 0:
                             chunk = chunk[: args_cli.action_horizon]
                     if not action_chunk_logged:
@@ -282,7 +284,7 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
                     consecutive_failures += 1
                     error = f"{type(exc).__name__}: {exc}"
                     print(f"[pi05] protocol/inference failure {consecutive_failures}: {error}", flush=True)
-                    if consecutive_failures >= MAX_CONSECUTIVE_INFERENCE_FAILURES:
+                    if policy is not None or consecutive_failures >= MAX_CONSECUTIVE_INFERENCE_FAILURES:
                         exit_reason = "inference_failed"
                         episode_reason = "inference_failed"
                         break
@@ -343,20 +345,24 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
         flush=True,
     )
     env.close()
+    if exit_reason == "inference_failed":
+        raise RuntimeError("PI0.5 evaluation stopped because remote inference failed; see the error above.")
 
 
 def _observation_inputs(policy_obs: Mapping[str, Any]) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
-    """Return raw 23-D state/velocity and four frames for 18-D policy conversion."""
+    """Return raw 23-D state/velocity and the three BPX policy frames."""
     return (
         as_numpy(policy_obs["robot_joint_pos"][0]),
         as_numpy(policy_obs["robot_joint_vel"][0]),
-        _observation_images(policy_obs),
+        _observation_images(policy_obs, AM_DP123_PI05_REQUIRED_CAMERAS),
     )
 
 
-def _observation_images(policy_obs: Mapping[str, Any]) -> dict[str, np.ndarray]:
-    """Return the four camera observations keyed by contract camera name."""
-    return {name: as_numpy(policy_obs[f"image_{name}"][0]) for name in AM_DP123_PI05_REQUIRED_CAMERAS}
+def _observation_images(
+    policy_obs: Mapping[str, Any], camera_names: tuple[str, ...] = AM_DP123_PI05_CAPTURE_CAMERAS
+) -> dict[str, np.ndarray]:
+    """Return selected camera observations keyed by contract camera name."""
+    return {name: as_numpy(policy_obs[f"image_{name}"][0]) for name in camera_names}
 
 
 def _record_policy_observation(
@@ -393,19 +399,47 @@ def _mock_action(
 
 
 def _make_remote_image_transform():
-    """Build the OpenPI image transform with a deferred ``openpi_client`` import."""
-    from openpi_client import image_tools
+    """Build the BPX center-crop transform with a deferred Pillow import."""
+    from PIL import Image
 
     def transform(image: object) -> np.ndarray:
-        resized = image_tools.resize_with_pad(to_uint8_rgb(image), 224, 224)
-        return image_tools.convert_to_uint8(resized)
+        rgb = to_uint8_rgb(image)
+        height, width = rgb.shape[:2]
+        side = min(height, width)
+        top = (height - side) // 2
+        left = (width - side) // 2
+        cropped = rgb[top : top + side, left : left + side]
+        resized = Image.fromarray(cropped).resize((224, 224), resample=Image.Resampling.BILINEAR)
+        return np.ascontiguousarray(np.asarray(resized, dtype=np.uint8))
 
     return transform
 
 
+def _extract_policy_action_chunk(response: object) -> np.ndarray:
+    """Validate an OpenPI response and return an effective 18-D action chunk."""
+    if not isinstance(response, Mapping) or "actions" not in response:
+        raise ValueError("OpenPI response must contain an 'actions' array.")
+    chunk = from_bpx_server_actions(response["actions"]).astype(np.float64, copy=False)
+    if chunk.ndim == 1:
+        chunk = chunk[None, :]
+    if chunk.ndim != 2:
+        raise ValueError(f"OpenPI actions must be a vector or matrix, got shape {chunk.shape}.")
+    return chunk
+
+
 def _log_payload(payload: Mapping[str, Any]) -> None:
     """Print the OpenPI payload keys and shapes for the first episode."""
-    summary = {key: getattr(value, "shape", type(value).__name__) for key, value in payload.items()}
+    summary = {
+        key: (
+            {
+                nested_key: getattr(nested_value, "shape", type(nested_value).__name__)
+                for nested_key, nested_value in value.items()
+            }
+            if isinstance(value, Mapping)
+            else getattr(value, "shape", type(value).__name__)
+        )
+        for key, value in payload.items()
+    }
     print(f"[pi05] OpenPI payload: {summary}", flush=True)
 
 
@@ -531,7 +565,7 @@ class _EpisodeRecorder:
         recorded_images = [(index, step.images) for index, step in enumerate(self._steps) if step.images is not None]
         if recorded_images:
             image_arrays: dict[str, np.ndarray] = {"step": np.asarray([index for index, _ in recorded_images])}
-            for name in AM_DP123_PI05_REQUIRED_CAMERAS:
+            for name in AM_DP123_PI05_CAPTURE_CAMERAS:
                 image_arrays[f"image_{name}"] = np.stack([images[name] for _, images in recorded_images])
             np.savez_compressed(directory / f"{stem}_images.npz", **image_arrays)
         print(f"[pi05] wrote {stem} with {len(self._steps)} steps to {directory}", flush=True)
