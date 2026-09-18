@@ -198,14 +198,27 @@ home 姿态下的手基座目标由 URDF FK 生成：左侧位于 `base_link` �
 PICO、Pink IK、`isaaclab_teleop` 或 CloudXR，因此 PI0.5 任务可在未安装 teleop 依赖时导入。
 
 * 任务：`Isaac-AM-DP123-Pi05-Eval-v0`（`AmDp123Pi05EvalEnvCfg`）。
-* 状态 ABI 仍是 23 维（`AM_DP123_STATE_JOINT_NAMES`），执行 ABI 仍是 18 维
-  （`AM_DP123_CONTROLLED_JOINT_NAMES`），动作项为官方 `mdp.JointPositionActionCfg`
+* Isaac Lab 内部仍观测 23 个 URDF 关节；发送给 PI0.5 的状态固定为 32 维，其中前 18 维是
+  左臂 7 + 左夹爪 1 + 右臂 7 + 右夹爪 1 + 头部 2，后 14 维强制为零。
+* PI0.5 的 18 个物理动作在适配层展开成 20 个 URDF 目标：每个夹爪标量驱动主手指 `q` 和
+  mimic 手指 `-q`。动作项为官方 `mdp.JointPositionActionCfg`
   （`preserve_order=True`、`use_default_offset=False`、逐关节 `clip`）。
 * 频率 30 Hz（`sim.dt = 1/120`、`decimation = 4`、`render_interval = 2`），单环境。
-* 模型动作维度由外部 JSON 决定，**不写死 32 维**：
-  * `policy/layouts/am_dp123_joint_position_18.json`：已确认的恒等 18 维布局，mock 与通路测试默认使用。
-  * `policy/layouts/am_dp123_pi05_32_template.json`：未确认模板，`source_indices` 为 `null`，不能作为
-    运行布局。PI0.5 的 32 维含义确认后，只需填写该 JSON 并同步 OpenPI 数据 transform。
+* 模型动作固定为 32 维。默认布局是
+  `policy/layouts/am_dp123_pi05_32_template.json`，其中 `source_indices` 已确认，
+  `zero_padding_indices=18..31`；旧的 18 维布局已禁用。
+
+| PI0.5 索引 | 物理量 |
+| --- | --- |
+| 0–6 | `openarm_left_joint1..7` |
+| 7 | 左夹爪 `grippers[0].position` |
+| 8–14 | `openarm_right_joint1..7` |
+| 15 | 右夹爪 `grippers[1].position` |
+| 16–17 | `head_joint1`、`head_joint2` |
+| 18–31 | 始终为零，不下发 |
+
+仿真中的夹爪标量是 URDF 主手指位置 [rad]，范围 `[-0.32, 0]`（闭合到张开）。数据 transform
+需要把真实 `grippers[i].position` 换算到该范围；第二根 mimic 手指由适配器生成，不进入模型向量。
 
 ### 观测协议
 
@@ -217,8 +230,8 @@ PICO、Pink IK、`isaaclab_teleop` 或 CloudXR，因此 PI0.5 任务可在未安
 | `observation/image_right` | `head_right` RGB（稳定扩展键，双臂/双目） |
 | `observation/wrist_image` | `left_wrist` RGB |
 | `observation/wrist_image_right` | `right_wrist` RGB（稳定扩展键） |
-| `observation/state` | 23 维 `float32` 关节位置，顺序固定 |
-| `observation/joint_velocity` | 23 维 `float32` 关节速度（稳定扩展键） |
+| `observation/state` | 32 维 `float32`：18 个真实量 + 14 个零 |
+| `observation/joint_velocity` | 相同顺序的 32 维速度；18–31 仍为零 |
 | `prompt` | 任务指令原文 |
 
 图像统一转为连续 `uint8` RGB（RGBA 去 alpha，浮点 `[0,1]` 映射到 `0–255`）；状态不在客户端
@@ -228,10 +241,10 @@ PICO、Pink IK、`isaaclab_teleop` 或 CloudXR，因此 PI0.5 任务可在未安
 
 ### 动作安全适配器
 
-`Pi05ActionAdapter` 按布局把 `(T, model_action_dim)` 或 `(model_action_dim,)` 映射为 18 维绝对关节目标：
+`Pi05ActionAdapter` 把 `(T, 32)` 或 `(32,)` 映射为 20 维绝对 URDF 关节目标：
 
 1. 校验 chunk 非空、无 NaN/Inf、宽度等于 `model_action_dim`；
-2. 用 `source_indices` 选出 18 维，应用 `scale`、`offset`（标量或 18 维数组均可）；
+2. 只选择索引 0–17，并把两个夹爪标量各展开到一对相反方向的手指关节；18–31 不读取；
 3. `absolute_joint_position` 直接取目标，`delta_joint_position` 从上一目标累加；
 4. 按 `AM_DP123_JOINT_SPECS` 做位置限位；
 5. 按 `max_velocity_rad_s * control_dt * velocity_scale` 做逐步速度限位；
@@ -278,15 +291,15 @@ uv run python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
     --kit_args "--/renderer/multiGpu/enabled=false"
 ```
 
-> 32 维含义确认前，remote 模式只完成网络、shape 与安全失败验证，不能据此宣称能正确控制
-> 机器人。推理连续失败 `MAX_CONSECUTIVE_INFERENCE_FAILURES` 次后安全退出，不会无限高速重试。
+> 32 维顺序已经固定。remote 服务若返回其他宽度会进入安全失败路径；连续失败
+> `MAX_CONSECUTIVE_INFERENCE_FAILURES` 次后退出，不会无限高速重试。
 
 ### 记录格式
 
 默认目录 `outputs/am_dp123_pi05_eval/<timestamp>/`，每个 episode 保存：
 
 * `episode_XXXXXX.npz`：`joint_pos (N,23)`、`joint_vel (N,23)`、`object_position (N,3)`、
-  `model_action (N,model_action_dim)`、`applied_joint_target (N,18)`、`terminated (N,)`、`truncated (N,)`、
+  `model_action (N,32)`、`applied_joint_target (N,20)`、`terminated (N,)`、`truncated (N,)`、
   `inference_valid (N,)` 和 `inference_error (N,)`。协议或推理失败时执行上一安全目标，零占位动作必须结合
   `inference_valid=false` 解读，不能视为模型输出。
 * `episode_XXXXXX.json`：task id、prompt、policy mode、remote host/port、action layout 路径与
@@ -308,7 +321,7 @@ uv run python amgg_robot_lab/scripts/am_dp123_pi05_episode.py \
     --episode outputs/am_dp123_pi05_eval/<timestamp>/episode_000000.npz
 ```
 
-在全新仿真中回放已经过验收的 18 维绝对关节目标：
+在全新仿真中回放已经过验收的 20 维内部 URDF 绝对关节目标：
 
 ```bash
 uv run --extra viser python amgg_robot_lab/scripts/am_dp123_pi05_episode.py \
@@ -325,7 +338,7 @@ uv run --extra viser python amgg_robot_lab/scripts/am_dp123_pi05_episode.py \
 ### 真机部署前必须统一
 
 动作布局（`source_indices` 与模式）、归一化统计（state/action 均值方差）、相机标定（内参与手眼
-外参）、控制频率与延迟。当前 18 维布局与四路相机参数是**仿真配置，不是真机标定结果**；
+外参）、控制频率与延迟。当前 32 维模型契约与四路相机参数是**仿真配置，不是真机标定结果**；
 也不得把当前仿真相机参数描述为真机标定结果。
 
 ## 离线测试与静态检查

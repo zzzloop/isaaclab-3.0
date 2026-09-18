@@ -13,11 +13,9 @@ from pathlib import Path
 
 import numpy as np
 
-from amgg_robot_lab.contracts import (
-    AM_DP123_CONTROLLED_JOINT_NAMES,
-    AM_DP123_JOINT_SPECS,
-    AM_DP123_STATE_DIM,
-)
+from amgg_robot_lab.contracts import AM_DP123_JOINT_SPECS, AM_DP123_STATE_DIM
+
+from .am_dp123_pi05_protocol import AM_DP123_PI05_CONTROLLED_JOINT_NAMES, AM_DP123_PI05_MODEL_DIM
 
 AM_DP123_PI05_EPISODE_REQUIRED_FIELDS = (
     "joint_pos",
@@ -79,7 +77,7 @@ def validate_pi05_episode(arrays: Mapping[str, np.ndarray]) -> Pi05EpisodeValida
     expected_shapes = {
         "joint_vel": (steps, AM_DP123_STATE_DIM),
         "object_position": (steps, 3),
-        "applied_joint_target": (steps, len(AM_DP123_CONTROLLED_JOINT_NAMES)),
+        "applied_joint_target": (steps, len(AM_DP123_PI05_CONTROLLED_JOINT_NAMES)),
         "terminated": (steps,),
         "truncated": (steps,),
         "inference_valid": (steps,),
@@ -91,16 +89,18 @@ def validate_pi05_episode(arrays: Mapping[str, np.ndarray]) -> Pi05EpisodeValida
             raise ValueError(f"{field} must have shape {expected}, got {actual}.")
 
     model_action = np.asarray(arrays["model_action"])
-    if model_action.ndim != 2 or model_action.shape[0] != steps or model_action.shape[1] == 0:
-        raise ValueError(f"model_action must have shape (N, model_action_dim), got {model_action.shape}.")
+    if model_action.shape != (steps, AM_DP123_PI05_MODEL_DIM):
+        raise ValueError(
+            f"model_action must have shape ({steps}, {AM_DP123_PI05_MODEL_DIM}), got {model_action.shape}."
+        )
 
     for field in ("joint_pos", "joint_vel", "object_position", "model_action", "applied_joint_target"):
         if not np.all(np.isfinite(np.asarray(arrays[field]))):
             raise ValueError(f"{field} contains NaN or Inf.")
 
     specs = {spec.name: spec for spec in AM_DP123_JOINT_SPECS}
-    lower = np.asarray([specs[name].lower_limit_rad for name in AM_DP123_CONTROLLED_JOINT_NAMES])
-    upper = np.asarray([specs[name].upper_limit_rad for name in AM_DP123_CONTROLLED_JOINT_NAMES])
+    lower = np.asarray([specs[name].lower_limit_rad for name in AM_DP123_PI05_CONTROLLED_JOINT_NAMES])
+    upper = np.asarray([specs[name].upper_limit_rad for name in AM_DP123_PI05_CONTROLLED_JOINT_NAMES])
     target = np.asarray(arrays["applied_joint_target"])
     tolerance = 1.0e-6
     if np.any(target < lower - tolerance) or np.any(target > upper + tolerance):

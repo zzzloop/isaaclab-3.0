@@ -6,8 +6,9 @@
 """Run the AM-DP123 PI0.5 evaluation task with a mock or a remote OpenPI policy.
 
 The script parses its CLI before starting Isaac Sim, then steps the
-``Isaac-AM-DP123-Pi05-Eval-v0`` task at 30 Hz. Model actions are mapped onto the 18-D
-simulation ABI by the external action-layout JSON and the :class:`Pi05ActionAdapter`
+``Isaac-AM-DP123-Pi05-Eval-v0`` task at 30 Hz. The fixed 32-D model ABI contains 18
+physical controls and 14 ignored zero-padding entries. The physical controls expand
+to 20 URDF targets through the action-layout JSON and :class:`Pi05ActionAdapter`
 safety adapter. ``mock_hold`` and ``mock_sine`` validate the full observation, camera,
 stepping, and recording path without any model server; ``remote`` lazily depends on
 ``openpi_client`` and keeps the last bounded target whenever inference fails.
@@ -37,6 +38,7 @@ if str(_EXTENSION_SOURCE_ROOT) not in sys.path:
 
 from amgg_robot_lab.policy import (  # noqa: E402
     AM_DP123_PI05_CONTROLLED_JOINT_NAMES,
+    AM_DP123_PI05_MODEL_JOINT_NAMES,
     AM_DP123_PI05_REQUIRED_CAMERAS,
     AM_DP123_PI05_STATE_JOINT_NAMES,
     Pi05ActionAdapter,
@@ -45,6 +47,7 @@ from amgg_robot_lab.policy import (  # noqa: E402
     controlled_state_indices,
     load_action_layout,
     load_default_action_layout,
+    to_pi05_model_state,
     to_uint8_rgb,
 )
 
@@ -55,7 +58,7 @@ MAX_RECORDED_IMAGE_FRAMES = 120
 # mock_sine only perturbs a few shoulder and elbow joints inside their limits. Every
 # other joint, including the fingers, holds its reset position so the motion is easy to
 # inspect and cannot leave the safe workspace.
-_MOCK_SINE_JOINTS = (0, 1, 2, 3, 7, 8, 9, 10)
+_MOCK_SINE_JOINTS = (0, 1, 2, 3, 8, 9, 10, 11)
 _MOCK_SINE_AMPLITUDE_RAD = (0.10, 0.08, 0.08, 0.05, 0.10, 0.08, 0.08, 0.05)
 _MOCK_SINE_FREQUENCY_HZ = 0.25
 
@@ -122,7 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--action_layout",
         default=None,
-        help="Action-layout JSON. Defaults to the identity 18-D layout.",
+        help="Action-layout JSON. Defaults to the confirmed AM-DP123 32-D layout.",
     )
     parser.add_argument(
         "--action_horizon",
@@ -189,7 +192,7 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
         policy_obs = obs["policy"]
         state = as_numpy(policy_obs["robot_joint_pos"][0])
         adapter.reset(state[list(state_indices)])
-        sine_base = adapter.current_target
+        sine_base = to_pi05_model_state(state).astype(np.float64)
 
         recorder = _EpisodeRecorder(
             record_images=args_cli.record_images and record_root is not None,
@@ -211,7 +214,6 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
                             args_cli.policy,
                             sine_base,
                             len(recorder),
-                            state_indices,
                             policy_obs,
                             AM_DP123_PI05_CONTROL_DT,
                         )[None, :]
@@ -290,7 +292,7 @@ def _run_evaluation(args_cli: argparse.Namespace) -> None:
 
 
 def _observation_inputs(policy_obs: Mapping[str, Any]) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
-    """Return the 23-D state, 23-D velocity, and four camera frames from a policy obs."""
+    """Return raw 23-D state/velocity and four frames for 32-D policy conversion."""
     return (
         as_numpy(policy_obs["robot_joint_pos"][0]),
         as_numpy(policy_obs["robot_joint_vel"][0]),
@@ -322,7 +324,6 @@ def _mock_action(
     mode: str,
     sine_base: np.ndarray,
     step: int,
-    state_indices: tuple[int, ...],
     policy_obs: Mapping[str, Any],
     control_dt: float,
 ) -> np.ndarray:
@@ -334,7 +335,7 @@ def _mock_action(
             action[index] = sine_base[index] + _MOCK_SINE_AMPLITUDE_RAD[offset] * math.sin(phase)
         return action
     state = as_numpy(policy_obs["robot_joint_pos"][0])
-    return state[list(state_indices)].astype(np.float64)
+    return to_pi05_model_state(state).astype(np.float64)
 
 
 def _make_remote_image_transform():
@@ -398,6 +399,7 @@ def _episode_metadata(args_cli: argparse.Namespace, layout: Any, env_cfg: Any, r
         "action_layout_sha256": layout.sha256(),
         "model_action_dim": layout.model_action_dim,
         "state_joint_names": list(AM_DP123_PI05_STATE_JOINT_NAMES),
+        "model_joint_names": list(AM_DP123_PI05_MODEL_JOINT_NAMES),
         "controlled_joint_names": list(AM_DP123_PI05_CONTROLLED_JOINT_NAMES),
         "control_dt": env_cfg.decimation * env_cfg.sim.dt,
         "git_commit": _git_commit(),

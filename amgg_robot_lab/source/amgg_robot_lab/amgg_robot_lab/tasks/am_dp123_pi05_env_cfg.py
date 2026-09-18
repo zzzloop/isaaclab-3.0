@@ -5,7 +5,7 @@
 
 """AM-DP123 PI0.5 policy evaluation environment.
 
-This task is decoupled from the PICO teleoperation task: it drives the 18 commanded
+This task is decoupled from the PICO teleoperation task: it drives the 20 internal
 joints directly with :class:`~isaaclab.envs.mdp.JointPositionActionCfg` and carries no
 IsaacTeleop pipeline, XR camera feed, controller, or Pink IK. Only the scene, camera
 observations, reset events, and terminations are shared with the teleoperation task.
@@ -18,7 +18,8 @@ from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab.visualizers import VisualizerCfg
 
-from amgg_robot_lab.contracts import AM_DP123_CONTROLLED_JOINT_NAMES, AM_DP123_JOINT_SPECS
+from amgg_robot_lab.contracts import AM_DP123_JOINT_SPECS
+from amgg_robot_lab.policy import AM_DP123_PI05_CONTROLLED_JOINT_NAMES
 
 from .am_dp123_scene_cfg import AmDp123SceneCfg, EventCfg, ObservationsCfg, TerminationsCfg
 
@@ -32,18 +33,20 @@ AM_DP123_PI05_CONTROL_DT = AM_DP123_PI05_SIM_DT * AM_DP123_PI05_DECIMATION
 """Policy control period [s], i.e. the 30 Hz command rate."""
 
 AM_DP123_PI05_CLIP = {
-    spec.name: (spec.lower_limit_rad, spec.upper_limit_rad) for spec in AM_DP123_JOINT_SPECS if spec.command_enabled
+    spec.name: (spec.lower_limit_rad, spec.upper_limit_rad)
+    for spec in AM_DP123_JOINT_SPECS
+    if spec.name in AM_DP123_PI05_CONTROLLED_JOINT_NAMES
 }
 """Exact per-joint position clip taken from the joint contract."""
 
 
 @configclass
 class Pi05ActionsCfg:
-    """Single 18-D absolute joint-position action term for the PI0.5 adapter."""
+    """Twenty URDF targets expanded from the 18 real PI0.5 controls."""
 
     joint_positions = base_mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=list(AM_DP123_CONTROLLED_JOINT_NAMES),
+        joint_names=list(AM_DP123_PI05_CONTROLLED_JOINT_NAMES),
         preserve_order=True,
         scale=1.0,
         offset=0.0,

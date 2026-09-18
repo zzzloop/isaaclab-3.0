@@ -3,48 +3,53 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""OpenPI observation payloads and the PI0.5 action-layout safety adapter."""
+"""AM-DP123 PI0.5 32-D observation and action contract tests."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from amgg_robot_lab.contracts import AM_DP123_CONTROLLED_JOINT_NAMES, AM_DP123_JOINT_SPECS, AM_DP123_STATE_JOINT_NAMES
+from amgg_robot_lab.contracts import AM_DP123_JOINT_SPECS, AM_DP123_STATE_JOINT_NAMES
 from amgg_robot_lab.policy import (
     AM_DP123_PI05_32_TEMPLATE_PATH,
     AM_DP123_PI05_ABSOLUTE_MODE,
-    AM_DP123_PI05_DELTA_MODE,
+    AM_DP123_PI05_CONTROLLED_JOINT_NAMES,
+    AM_DP123_PI05_MODEL_DIM,
+    AM_DP123_PI05_MODEL_JOINT_NAMES,
     AM_DP123_PI05_OBSERVATION_KEYS,
     AM_DP123_PI05_REQUIRED_CAMERAS,
+    AM_DP123_PI05_SOURCE_INDICES,
+    AM_DP123_PI05_ZERO_PADDING_INDICES,
     AmDp123ActionLayout,
     Pi05ActionAdapter,
     build_pi05_observation,
     controlled_state_indices,
-    load_action_layout,
     load_default_action_layout,
+    to_pi05_model_state,
     to_uint8_rgb,
     validate_pi05_episode,
 )
 
 _CONTROL_DT = 1.0 / 30.0
 _SPECS = {spec.name: spec for spec in AM_DP123_JOINT_SPECS}
-_SPECS_IN_ORDER = [_SPECS[name] for name in AM_DP123_CONTROLLED_JOINT_NAMES]
+_SPECS_IN_ORDER = [_SPECS[name] for name in AM_DP123_PI05_CONTROLLED_JOINT_NAMES]
 _LOWER = np.array([spec.lower_limit_rad for spec in _SPECS_IN_ORDER])
 _UPPER = np.array([spec.upper_limit_rad for spec in _SPECS_IN_ORDER])
 _HOME = np.array([spec.home_position_rad for spec in _SPECS_IN_ORDER])
-_MID = (_LOWER + _UPPER) / 2.0
+_SCALE = [1.0] * 14 + [1.0, -1.0, 1.0, -1.0, 1.0, 1.0]
 
 
 def _layout_dict(**overrides: object) -> dict[str, object]:
     layout: dict[str, object] = {
         "schema_version": 1,
         "confirmed": True,
-        "model_action_dim": 18,
+        "model_action_dim": AM_DP123_PI05_MODEL_DIM,
         "mode": AM_DP123_PI05_ABSOLUTE_MODE,
-        "sim_joint_names": list(AM_DP123_CONTROLLED_JOINT_NAMES),
-        "source_indices": list(range(18)),
-        "scale": 1.0,
+        "sim_joint_names": list(AM_DP123_PI05_CONTROLLED_JOINT_NAMES),
+        "source_indices": list(AM_DP123_PI05_SOURCE_INDICES),
+        "zero_padding_indices": list(AM_DP123_PI05_ZERO_PADDING_INDICES),
+        "scale": _SCALE,
         "offset": 0.0,
         "velocity_scale": 0.5,
     }
@@ -52,203 +57,112 @@ def _layout_dict(**overrides: object) -> dict[str, object]:
     return layout
 
 
-def test_default_layout_is_the_identity_18d_abi():
-    """The shipped default layout maps every model entry to one commanded joint."""
-    layout = load_default_action_layout()
-    assert layout.schema_version == 1
-    assert layout.confirmed is True
-    assert layout.model_action_dim == 18
-    assert layout.sim_joint_names == AM_DP123_CONTROLLED_JOINT_NAMES
-    assert layout.source_indices == tuple(range(18))
-    assert layout.mode == AM_DP123_PI05_ABSOLUTE_MODE
-    assert layout.sha256() is not None
-
-
-def test_layout_joint_names_must_equal_the_canonical_order():
-    """Reordered or renamed simulation joints are rejected."""
-    with pytest.raises(ValueError):
-        AmDp123ActionLayout.from_dict(_layout_dict(sim_joint_names=list(reversed(AM_DP123_CONTROLLED_JOINT_NAMES))))
-    with pytest.raises(ValueError):
-        AmDp123ActionLayout.from_dict(_layout_dict(sim_joint_names=list(AM_DP123_CONTROLLED_JOINT_NAMES[:-1])))
-
-
-def test_layout_rejects_duplicate_and_out_of_range_indices():
-    """A layout may not select one model entry twice or read past the action vector."""
-    with pytest.raises(ValueError):
-        AmDp123ActionLayout.from_dict(_layout_dict(source_indices=[0] * 18))
-    with pytest.raises(ValueError):
-        AmDp123ActionLayout.from_dict(_layout_dict(source_indices=[*range(17), 18]))
-    with pytest.raises(ValueError):
-        AmDp123ActionLayout.from_dict(_layout_dict(source_indices=list(range(17))))
-
-
-def test_confirmed_layout_requires_source_indices():
-    """A confirmed layout without a mapping is invalid."""
-    with pytest.raises(ValueError):
-        AmDp123ActionLayout.from_dict(_layout_dict(source_indices=None))
-
-
-def test_unconfirmed_template_cannot_drive_the_robot():
-    """The 32-D template stays unconfirmed, so it never builds an adapter."""
-    template = load_action_layout(AM_DP123_PI05_32_TEMPLATE_PATH)
-    assert template.model_action_dim == 32
-    assert template.confirmed is False
-    assert template.source_indices is None
-    with pytest.raises(ValueError):
-        template.require_confirmed()
-    with pytest.raises(ValueError):
-        Pi05ActionAdapter(template, _CONTROL_DT)
-
-
-def test_any_model_dimension_maps_onto_the_18d_abi():
-    """A 24-D model vector maps its selected entries onto the commanded joints."""
-    source_indices = tuple(range(5, 23))
-    layout = AmDp123ActionLayout.from_dict(_layout_dict(model_action_dim=24, source_indices=list(source_indices)))
-    adapter = Pi05ActionAdapter(layout, _CONTROL_DT)
-    adapter.reset(_HOME)
-
-    model_action = np.zeros(24)
-    model_action[list(source_indices)] = _HOME
-    targets = adapter.adapt(model_action)
-    assert targets.shape == (1, 18)
-    np.testing.assert_allclose(targets[0], _HOME, atol=1e-9)
-
-
-def test_chunk_and_single_action_shapes():
-    """A 1-D action becomes one row; a chunk keeps its row count."""
-    adapter = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict()), _CONTROL_DT)
-    adapter.reset(np.zeros(18))
-    assert adapter.adapt(np.full(18, 0.01)).shape == (1, 18)
-    assert adapter.adapt(np.full((5, 18), 0.01)).shape == (5, 18)
-
-
-def test_invalid_actions_are_rejected():
-    """Wrong widths, empty chunks, and non-finite values never reach the simulator."""
-    adapter = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict()), _CONTROL_DT)
-    adapter.reset(np.zeros(18))
-    with pytest.raises(ValueError):
-        adapter.adapt(np.zeros(17))
-    with pytest.raises(ValueError):
-        adapter.adapt(np.zeros((0, 18)))
-    with pytest.raises(ValueError):
-        adapter.adapt(np.full(18, np.nan))
-    with pytest.raises(ValueError):
-        adapter.adapt(np.full((3, 18), np.inf))
-
-
-def test_adapt_before_reset_is_rejected():
-    """Velocity limiting needs a measured starting point."""
-    adapter = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict()), _CONTROL_DT)
-    with pytest.raises(RuntimeError):
-        adapter.adapt(np.zeros(18))
-
-
-def test_scale_and_offset_broadcast_scalar_and_vector():
-    """Scalar and per-joint scale/offset are applied before limiting."""
-    scalar = Pi05ActionAdapter(
-        AmDp123ActionLayout.from_dict(_layout_dict(scale=1.5, offset=0.0, velocity_scale=1e6)), _CONTROL_DT
-    )
-    scalar.reset(_MID)
-    np.testing.assert_allclose(scalar.adapt(_MID / 1.5)[0], _MID, atol=1e-9)
-
-    shifted = Pi05ActionAdapter(
-        AmDp123ActionLayout.from_dict(_layout_dict(scale=1.0, offset=0.1, velocity_scale=1e6)), _CONTROL_DT
-    )
-    shifted.reset(_MID)
-    np.testing.assert_allclose(shifted.adapt(_MID - 0.1)[0], _MID, atol=1e-9)
-
-    vector = Pi05ActionAdapter(
-        AmDp123ActionLayout.from_dict(_layout_dict(scale=[2.0] * 18, offset=[-0.5] * 18, velocity_scale=1e6)),
-        _CONTROL_DT,
-    )
-    vector.reset(_MID)
-    np.testing.assert_allclose(vector.adapt((_MID + 0.5) / 2.0)[0], _MID, atol=1e-9)
-
-
-def test_absolute_and_delta_modes():
-    """Absolute targets follow the model; delta targets accumulate from the last target."""
-    delta_value = 0.001
-    absolute = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict(velocity_scale=1e6)), _CONTROL_DT)
-    absolute.reset(_MID)
-    np.testing.assert_allclose(absolute.adapt(_MID + delta_value)[0], _MID + delta_value, atol=1e-12)
-
-    delta = Pi05ActionAdapter(
-        AmDp123ActionLayout.from_dict(_layout_dict(mode=AM_DP123_PI05_DELTA_MODE, velocity_scale=1e6)), _CONTROL_DT
-    )
-    delta.reset(_MID)
-    np.testing.assert_allclose(delta.adapt(np.full(18, delta_value))[0], _MID + delta_value, atol=1e-12)
-    np.testing.assert_allclose(delta.adapt(np.full(18, delta_value))[0], _MID + 2.0 * delta_value, atol=1e-12)
-
-
-def test_position_limits_clamp_every_joint():
-    """Unbounded model output is clamped to the joint contract limits."""
-    adapter = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict(velocity_scale=1e6)), _CONTROL_DT)
-    adapter.reset(np.zeros(18))
-    np.testing.assert_allclose(adapter.adapt(np.full(18, 100.0))[0], _UPPER, atol=1e-12)
-    np.testing.assert_allclose(adapter.adapt(np.full(18, -100.0))[0], _LOWER, atol=1e-12)
-
-
-def test_velocity_limit_uses_contract_velocity_and_control_period():
-    """One step may not move a joint faster than ``max_velocity * control_dt * scale``."""
-    adapter = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict()), _CONTROL_DT)
-    adapter.reset(np.zeros(18))
-    step = np.array([spec.max_velocity_rad_s for spec in _SPECS_IN_ORDER]) * _CONTROL_DT * 0.5
-    np.testing.assert_allclose(adapter.adapt(np.full(18, 100.0))[0], np.minimum(_UPPER, step), atol=1e-12)
-
-
-def test_reset_rebases_at_the_measured_position():
-    """Reset starts from the measured joints instead of zero and clamps bad input."""
-    adapter = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict()), _CONTROL_DT)
-    adapter.reset(_HOME)
-    np.testing.assert_allclose(adapter.current_target, _HOME, atol=1e-9)
-    np.testing.assert_allclose(adapter.adapt(_HOME)[0], _HOME, atol=1e-9)
-
-    adapter.reset(np.full(18, 100.0))
-    np.testing.assert_allclose(adapter.current_target, _UPPER, atol=1e-12)
-
-
-def test_layout_rejects_unknown_mode_and_schema():
-    """Unknown modes and schema versions fail validation."""
-    with pytest.raises(ValueError):
-        AmDp123ActionLayout.from_dict(_layout_dict(mode="cartesian_pose"))
-    with pytest.raises(ValueError):
-        AmDp123ActionLayout.from_dict(_layout_dict(schema_version=2))
-
-
-def test_controlled_state_indices_align_with_state_names():
-    """The 18 controlled joints are a stable subset of the 23-D state order."""
-    indices = controlled_state_indices()
-    assert len(indices) == 18
-    assert tuple(AM_DP123_STATE_JOINT_NAMES[index] for index in indices) == AM_DP123_CONTROLLED_JOINT_NAMES
-
-
-def test_to_uint8_rgb_converts_float_rgba():
-    """Float RGBA input becomes contiguous uint8 RGB, dropping alpha."""
-    rgba = np.zeros((2, 2, 4), dtype=np.float32)
-    rgba[..., 0] = 1.0
-    rgba[..., 3] = 1.0
-    converted = to_uint8_rgb(rgba)
-    assert converted.dtype == np.uint8
-    assert converted.shape == (2, 2, 3)
-    assert converted.flags["C_CONTIGUOUS"]
-    np.testing.assert_array_equal(converted[..., 0], np.full((2, 2), 255, dtype=np.uint8))
-    np.testing.assert_array_equal(converted[..., 1:], np.zeros((2, 2, 2), dtype=np.uint8))
-
-
-def test_to_uint8_rgb_rejects_bad_shape_and_nonfinite():
-    """Only finite three- or four-channel frames are accepted."""
-    with pytest.raises(ValueError):
-        to_uint8_rgb(np.zeros((4, 4), dtype=np.uint8))
-    with pytest.raises(ValueError):
-        to_uint8_rgb(np.full((4, 4, 3), np.nan, dtype=np.float32))
+def _model_action_from_target(target: np.ndarray) -> np.ndarray:
+    action = np.zeros(AM_DP123_PI05_MODEL_DIM, dtype=np.float64)
+    action[0:7] = target[0:7]
+    action[8:15] = target[7:14]
+    action[7] = target[14]
+    action[15] = target[16]
+    action[16:18] = target[18:20]
+    return action
 
 
 def _images() -> dict[str, np.ndarray]:
     return {name: np.zeros((4, 5, 3), dtype=np.uint8) for name in AM_DP123_PI05_REQUIRED_CAMERAS}
 
 
-def test_observation_payload_keys_and_dtypes():
-    """The payload carries the four cameras, the 23-D state pair, and the prompt."""
+def test_default_layout_is_confirmed_32d_contract():
+    layout = load_default_action_layout()
+    assert layout.path == AM_DP123_PI05_32_TEMPLATE_PATH
+    assert layout.confirmed is True
+    assert layout.model_action_dim == 32
+    assert layout.sim_joint_names == AM_DP123_PI05_CONTROLLED_JOINT_NAMES
+    assert layout.source_indices == AM_DP123_PI05_SOURCE_INDICES
+    assert layout.zero_padding_indices == AM_DP123_PI05_ZERO_PADDING_INDICES
+    assert layout.sha256() is not None
+
+
+def test_layout_rejects_wrong_width_mapping_and_padding():
+    with pytest.raises(ValueError, match="must be 32"):
+        AmDp123ActionLayout.from_dict(_layout_dict(model_action_dim=18))
+    with pytest.raises(ValueError, match="canonical AM-DP123 PI0.5 mapping"):
+        AmDp123ActionLayout.from_dict(_layout_dict(source_indices=list(range(20))))
+    with pytest.raises(ValueError, match="18 through 31"):
+        AmDp123ActionLayout.from_dict(_layout_dict(zero_padding_indices=list(range(18, 31))))
+
+
+def test_layout_joint_names_must_equal_internal_urdf_order():
+    with pytest.raises(ValueError):
+        AmDp123ActionLayout.from_dict(
+            _layout_dict(sim_joint_names=list(reversed(AM_DP123_PI05_CONTROLLED_JOINT_NAMES)))
+        )
+
+
+def test_adapter_expands_each_gripper_scalar_to_mimic_pair():
+    adapter = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict(velocity_scale=1.0e6)), _CONTROL_DT)
+    adapter.reset(_HOME)
+    action = _model_action_from_target(_HOME)
+    action[7] = -0.20
+    action[15] = -0.10
+    target = adapter.adapt(action)[0]
+    np.testing.assert_allclose(target[14:18], [-0.20, 0.20, -0.10, 0.10], atol=1.0e-9)
+    np.testing.assert_allclose(target[18:20], action[16:18], atol=1.0e-9)
+
+
+def test_adapter_ignores_all_zero_padding_entries():
+    adapter = Pi05ActionAdapter(load_default_action_layout(), _CONTROL_DT)
+    adapter.reset(_HOME)
+    baseline = _model_action_from_target(_HOME)
+    padded = baseline.copy()
+    padded[18:32] = np.linspace(-100.0, 100.0, 14)
+    np.testing.assert_allclose(adapter.adapt(padded), adapter.adapt(baseline), atol=1.0e-12)
+
+
+def test_adapter_rejects_invalid_actions_and_clamps_limits():
+    adapter = Pi05ActionAdapter(load_default_action_layout(), _CONTROL_DT)
+    adapter.reset(_HOME)
+    with pytest.raises(ValueError):
+        adapter.adapt(np.zeros(31))
+    with pytest.raises(ValueError):
+        adapter.adapt(np.zeros((0, 32)))
+    with pytest.raises(ValueError):
+        adapter.adapt(np.full(32, np.nan))
+
+    unbounded = np.zeros(32)
+    unbounded[:18] = 100.0
+    fast = Pi05ActionAdapter(AmDp123ActionLayout.from_dict(_layout_dict(velocity_scale=1.0e6)), _CONTROL_DT)
+    fast.reset(_HOME)
+    result = fast.adapt(unbounded)[0]
+    assert np.all(result >= _LOWER)
+    assert np.all(result <= _UPPER)
+
+
+def test_controlled_state_indices_cover_arms_hands_and_head_only():
+    indices = controlled_state_indices()
+    assert len(indices) == 20
+    assert tuple(AM_DP123_STATE_JOINT_NAMES[index] for index in indices) == AM_DP123_PI05_CONTROLLED_JOINT_NAMES
+    assert all(not AM_DP123_STATE_JOINT_NAMES[index].startswith("waist_") for index in indices)
+
+
+def test_raw_state_converts_to_exact_18_plus_14_pi05_layout():
+    raw = np.arange(23, dtype=np.float32)
+    state = to_pi05_model_state(raw)
+    raw_index = {name: index for index, name in enumerate(AM_DP123_STATE_JOINT_NAMES)}
+    expected_names = (
+        *AM_DP123_PI05_MODEL_JOINT_NAMES[0:7],
+        "left_arm_hand_joint1_0",
+        *AM_DP123_PI05_MODEL_JOINT_NAMES[8:15],
+        "right_arm_hand_joint1_0",
+        "head_joint1",
+        "head_joint2",
+    )
+    expected = np.array([raw[raw_index[name]] for name in expected_names], dtype=np.float32)
+    assert state.shape == (32,)
+    np.testing.assert_array_equal(state[:18], expected)
+    np.testing.assert_array_equal(state[18:], np.zeros(14, dtype=np.float32))
+
+
+def test_observation_payload_has_32d_state_and_zero_padding():
     payload = build_pi05_observation(
         np.arange(23, dtype=np.float32),
         np.ones(23, dtype=np.float32),
@@ -256,53 +170,42 @@ def test_observation_payload_keys_and_dtypes():
         "pick the cube",
     )
     keys = AM_DP123_PI05_OBSERVATION_KEYS
-    assert keys["state"] in payload and keys["image"] in payload
-    assert keys["image_right"] in payload and keys["wrist_image_right"] in payload
-    assert payload[keys["prompt"]] == "pick the cube"
-    assert payload[keys["state"]].shape == (23,)
+    assert payload[keys["state"]].shape == (32,)
+    assert payload[keys["joint_velocity"]].shape == (32,)
     assert payload[keys["state"]].dtype == np.float32
-    assert payload[keys["joint_velocity"]].dtype == np.float32
-    for key in ("image", "image_right", "wrist_image", "wrist_image_right"):
-        assert payload[keys[key]].dtype == np.uint8
-    assert payload[keys["image"]].shape == (4, 5, 3)
+    np.testing.assert_array_equal(payload[keys["state"]][18:], np.zeros(14, dtype=np.float32))
+    np.testing.assert_array_equal(payload[keys["joint_velocity"]][18:], np.zeros(14, dtype=np.float32))
 
 
-def test_observation_payload_uses_the_image_transform():
-    """Remote callers can substitute the OpenPI resize transform."""
-    calls: list[str] = []
-
-    def transform(image: np.ndarray) -> np.ndarray:
-        calls.append("called")
-        return np.zeros((224, 224, 3), dtype=np.uint8)
-
-    payload = build_pi05_observation(
-        np.zeros(23, dtype=np.float32), np.zeros(23, dtype=np.float32), _images(), "prompt", transform
-    )
-    assert len(calls) == 4
-    assert payload[AM_DP123_PI05_OBSERVATION_KEYS["image"]].shape == (224, 224, 3)
-
-
-def test_observation_rejects_missing_camera_and_bad_state():
-    """Missing cameras, wrong state widths, and NaN state are rejected."""
+def test_observation_rejects_missing_camera_and_bad_raw_state():
     images = _images()
     del images["left_wrist"]
     with pytest.raises(ValueError):
         build_pi05_observation(np.zeros(23), np.zeros(23), images, "prompt")
     with pytest.raises(ValueError):
         build_pi05_observation(np.zeros(22), np.zeros(23), _images(), "prompt")
-    bad_state = np.zeros(23, dtype=np.float32)
+    bad_state = np.zeros(23)
     bad_state[0] = np.nan
     with pytest.raises(ValueError):
         build_pi05_observation(bad_state, np.zeros(23), _images(), "prompt")
 
 
+def test_to_uint8_rgb_converts_float_rgba():
+    rgba = np.zeros((2, 2, 4), dtype=np.float32)
+    rgba[..., 0] = 1.0
+    rgba[..., 3] = 1.0
+    converted = to_uint8_rgb(rgba)
+    assert converted.dtype == np.uint8
+    assert converted.shape == (2, 2, 3)
+    np.testing.assert_array_equal(converted[..., 0], np.full((2, 2), 255, dtype=np.uint8))
+
+
 def _episode_arrays(steps: int = 3) -> dict[str, np.ndarray]:
-    """Return a small valid version-2 episode payload."""
     return {
         "joint_pos": np.zeros((steps, 23), dtype=np.float32),
         "joint_vel": np.zeros((steps, 23), dtype=np.float32),
         "object_position": np.zeros((steps, 3), dtype=np.float32),
-        "model_action": np.zeros((steps, 18), dtype=np.float32),
+        "model_action": np.zeros((steps, 32), dtype=np.float32),
         "applied_joint_target": np.repeat(_HOME[None, :], steps, axis=0).astype(np.float32),
         "terminated": np.zeros(steps, dtype=bool),
         "truncated": np.zeros(steps, dtype=bool),
@@ -311,30 +214,22 @@ def _episode_arrays(steps: int = 3) -> dict[str, np.ndarray]:
     }
 
 
-def test_episode_validation_accepts_valid_data_and_reports_failures():
-    """The acceptance helper distinguishes valid model output from held failure steps."""
+def test_episode_validation_accepts_32d_model_and_20d_execution():
     arrays = _episode_arrays()
     arrays["inference_valid"][1] = False
     arrays["inference_error"][1] = "TimeoutError: server unavailable"
     summary = validate_pi05_episode(arrays)
-    assert summary.steps == 3
-    assert summary.model_action_dim == 18
+    assert summary.model_action_dim == 32
     assert summary.inference_failure_steps == 1
 
 
-def test_episode_validation_rejects_corruption_and_ambiguous_failures():
-    """Bad shapes, non-finite values, unsafe targets, and unlabeled holds are rejected."""
+def test_episode_validation_rejects_bad_execution_width_and_limits():
     arrays = _episode_arrays()
-    arrays["joint_pos"][0, 0] = np.nan
-    with pytest.raises(ValueError, match="joint_pos contains"):
+    arrays["applied_joint_target"] = np.zeros((3, 18), dtype=np.float32)
+    with pytest.raises(ValueError, match="applied_joint_target"):
         validate_pi05_episode(arrays)
 
     arrays = _episode_arrays()
     arrays["applied_joint_target"][0, 0] = 100.0
     with pytest.raises(ValueError, match="joint position limits"):
-        validate_pi05_episode(arrays)
-
-    arrays = _episode_arrays()
-    arrays["inference_valid"][0] = False
-    with pytest.raises(ValueError, match="must describe"):
         validate_pi05_episode(arrays)

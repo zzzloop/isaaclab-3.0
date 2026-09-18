@@ -22,6 +22,7 @@ if str(_EXTENSION_SOURCE_ROOT) not in sys.path:
 
 from amgg_robot_lab.policy import (  # noqa: E402
     AM_DP123_PI05_CONTROLLED_JOINT_NAMES,
+    AM_DP123_PI05_MODEL_JOINT_NAMES,
     AM_DP123_PI05_STATE_JOINT_NAMES,
     Pi05EpisodeValidationSummary,
     load_pi05_episode,
@@ -72,6 +73,8 @@ def _validate_metadata(metadata: Mapping[str, Any], summary: Pi05EpisodeValidati
         raise ValueError("Episode metadata inference_failure_steps does not match the NPZ payload.")
     if tuple(metadata.get("state_joint_names", ())) != AM_DP123_PI05_STATE_JOINT_NAMES:
         raise ValueError("Episode metadata state_joint_names does not match the canonical state ABI.")
+    if tuple(metadata.get("model_joint_names", ())) != AM_DP123_PI05_MODEL_JOINT_NAMES:
+        raise ValueError("Episode metadata model_joint_names does not match the canonical 32-D PI0.5 ABI.")
     if tuple(metadata.get("controlled_joint_names", ())) != AM_DP123_PI05_CONTROLLED_JOINT_NAMES:
         raise ValueError("Episode metadata controlled_joint_names does not match the canonical action ABI.")
 

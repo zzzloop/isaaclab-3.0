@@ -9,9 +9,9 @@ This module deliberately depends only on NumPy and :mod:`amgg_robot_lab.contract
 observation conversion, the action-layout JSON schema, and the safety adapter can be
 tested offline on Windows without Isaac Sim, Torch, OpenPI, or a WebSocket client.
 
-The model output dimension is never hard-coded: it comes from the external action-layout
-JSON, which selects the 18 entries of the canonical simulation ABI and scales them into
-absolute joint targets.
+The model state and action width is the confirmed 32-D AM-DP123 ABI: 18 physical
+controls followed by 14 zero-padding entries. The layout expands the two single-value
+grippers to their URDF mimic pairs and never sends padding entries to the articulation.
 """
 
 from __future__ import annotations
@@ -26,7 +26,9 @@ from pathlib import Path
 import numpy as np
 
 from amgg_robot_lab.contracts import (
-    AM_DP123_CONTROLLED_JOINT_NAMES,
+    AM_DP123_ARM_JOINT_NAMES,
+    AM_DP123_HAND_JOINT_NAMES,
+    AM_DP123_HEAD_JOINT_NAMES,
     AM_DP123_JOINT_SPECS,
     AM_DP123_STATE_DIM,
     AM_DP123_STATE_JOINT_NAMES,
@@ -34,10 +36,32 @@ from amgg_robot_lab.contracts import (
 )
 
 AM_DP123_PI05_STATE_JOINT_NAMES = AM_DP123_STATE_JOINT_NAMES
-"""Canonical 23-D state order sent as ``observation/state``."""
+"""Canonical 23-D raw Isaac Lab state order used before policy conversion."""
 
-AM_DP123_PI05_CONTROLLED_JOINT_NAMES = AM_DP123_CONTROLLED_JOINT_NAMES
-"""Canonical 18-D simulation command order produced by the action adapter."""
+AM_DP123_PI05_MODEL_DIM = 32
+"""Fixed PI0.5 state and action width."""
+
+AM_DP123_PI05_REAL_DIM = 18
+"""Number of PI0.5 entries with physical meaning."""
+
+AM_DP123_PI05_MODEL_JOINT_NAMES: tuple[str, ...] = (
+    *AM_DP123_ARM_JOINT_NAMES[:7],
+    "left_gripper_position",
+    *AM_DP123_ARM_JOINT_NAMES[7:],
+    "right_gripper_position",
+    *AM_DP123_HEAD_JOINT_NAMES,
+    *(f"zero_padding_{index}" for index in range(14)),
+)
+"""Canonical PI0.5 32-D order: 18 real values followed by 14 zeros."""
+
+AM_DP123_PI05_ZERO_PADDING_INDICES = tuple(range(AM_DP123_PI05_REAL_DIM, AM_DP123_PI05_MODEL_DIM))
+"""PI0.5 entries that are always zero and never sent to the articulation."""
+
+AM_DP123_PI05_CONTROLLED_JOINT_NAMES = AM_DP123_ARM_JOINT_NAMES + AM_DP123_HAND_JOINT_NAMES + AM_DP123_HEAD_JOINT_NAMES
+"""Twenty URDF targets produced internally from the 18 real PI0.5 values."""
+
+AM_DP123_PI05_SOURCE_INDICES = (*range(7), *range(8, 15), 7, 7, 15, 15, 16, 17)
+"""PI0.5 action entry selected for each internal URDF target."""
 
 AM_DP123_PI05_REQUIRED_CAMERAS: tuple[str, str, str, str] = (
     "head_left",
@@ -64,7 +88,7 @@ AM_DP123_PI05_ACTION_MODES: tuple[str, str] = (AM_DP123_PI05_ABSOLUTE_MODE, AM_D
 AM_DP123_PI05_LAYOUT_SCHEMA_VERSION = 1
 
 _LAYOUT_DIR = Path(__file__).resolve().parent / "layouts"
-AM_DP123_PI05_DEFAULT_LAYOUT_PATH = _LAYOUT_DIR / "am_dp123_joint_position_18.json"
+AM_DP123_PI05_DEFAULT_LAYOUT_PATH = _LAYOUT_DIR / "am_dp123_pi05_32_template.json"
 AM_DP123_PI05_32_TEMPLATE_PATH = _LAYOUT_DIR / "am_dp123_pi05_32_template.json"
 
 
@@ -86,9 +110,40 @@ def as_numpy(value: object) -> np.ndarray:
 
 
 def controlled_state_indices() -> tuple[int, ...]:
-    """Return where the 18 commanded joints sit inside the 23-D state vector."""
+    """Return where the 20 internally commanded joints sit in the raw 23-D state."""
     state_positions = {name: index for index, name in enumerate(AM_DP123_STATE_JOINT_NAMES)}
-    return tuple(state_positions[name] for name in AM_DP123_CONTROLLED_JOINT_NAMES)
+    return tuple(state_positions[name] for name in AM_DP123_PI05_CONTROLLED_JOINT_NAMES)
+
+
+def to_pi05_model_state(joint_state: object) -> np.ndarray:
+    """Convert the raw 23-D articulation state to the canonical 32-D PI0.5 state.
+
+    The gripper value is the first (driving) URDF finger joint. The second finger is
+    its ``-1`` mimic and is deliberately absent from the model ABI. Entries 18--31
+    are freshly allocated zeros, so base, waist, and mimic joints cannot leak into
+    the reserved model dimensions.
+
+    Args:
+        joint_state: Raw joint positions [rad] or velocities [rad/s] ordered like
+            :data:`AM_DP123_PI05_STATE_JOINT_NAMES`.
+
+    Returns:
+        Contiguous ``float32`` vector of shape ``(32,)``.
+    """
+    raw = np.asarray(as_numpy(joint_state))
+    if raw.shape != (AM_DP123_STATE_DIM,):
+        raise ValueError(f"Expected a {AM_DP123_STATE_DIM}-D raw joint state, got shape {raw.shape}.")
+    if not np.all(np.isfinite(raw)):
+        raise ValueError("Raw joint state contains non-finite values.")
+
+    state_positions = {name: index for index, name in enumerate(AM_DP123_STATE_JOINT_NAMES)}
+    model = np.zeros(AM_DP123_PI05_MODEL_DIM, dtype=np.float32)
+    model[0:7] = raw[[state_positions[name] for name in AM_DP123_ARM_JOINT_NAMES[:7]]]
+    model[7] = raw[state_positions[AM_DP123_HAND_JOINT_NAMES[0]]]
+    model[8:15] = raw[[state_positions[name] for name in AM_DP123_ARM_JOINT_NAMES[7:]]]
+    model[15] = raw[state_positions[AM_DP123_HAND_JOINT_NAMES[2]]]
+    model[16:18] = raw[[state_positions[name] for name in AM_DP123_HEAD_JOINT_NAMES]]
+    return np.ascontiguousarray(model)
 
 
 def to_uint8_rgb(image: object) -> np.ndarray:
@@ -130,9 +185,9 @@ def build_pi05_observation(
     """Build the OpenPI remote-inference payload from Isaac Lab observations.
 
     Args:
-        joint_pos: 23-D joint positions [rad] ordered like
+        joint_pos: Raw 23-D joint positions [rad] ordered like
             :data:`AM_DP123_PI05_STATE_JOINT_NAMES`.
-        joint_vel: 23-D joint velocities [rad/s] in the same order.
+        joint_vel: Raw 23-D joint velocities [rad/s] in the same order.
         images: Mapping keyed by :data:`AM_DP123_PI05_REQUIRED_CAMERAS`.
         prompt: Task instruction sent verbatim to OpenPI.
         image_transform: Optional per-image conversion. Defaults to
@@ -146,17 +201,8 @@ def build_pi05_observation(
         ValueError: If a camera is missing, a state vector has the wrong shape, or a
             state value is not finite.
     """
-    state = as_numpy(joint_pos)
-    if state.shape != (AM_DP123_STATE_DIM,):
-        raise ValueError(f"Expected a {AM_DP123_STATE_DIM}-D joint position state, got shape {state.shape}.")
-    if not np.all(np.isfinite(state)):
-        raise ValueError("Joint position state contains non-finite values.")
-
-    velocity = as_numpy(joint_vel)
-    if velocity.shape != (AM_DP123_STATE_DIM,):
-        raise ValueError(f"Expected a {AM_DP123_STATE_DIM}-D joint velocity state, got shape {velocity.shape}.")
-    if not np.all(np.isfinite(velocity)):
-        raise ValueError("Joint velocity state contains non-finite values.")
+    state = to_pi05_model_state(joint_pos)
+    velocity = to_pi05_model_state(joint_vel)
 
     if not isinstance(prompt, str):
         raise ValueError("OpenPI prompt must be a string.")
@@ -174,8 +220,8 @@ def build_pi05_observation(
         keys["image_right"]: converted["head_right"],
         keys["wrist_image"]: converted["left_wrist"],
         keys["wrist_image_right"]: converted["right_wrist"],
-        keys["state"]: np.ascontiguousarray(state.astype(np.float32)),
-        keys["joint_velocity"]: np.ascontiguousarray(velocity.astype(np.float32)),
+        keys["state"]: state,
+        keys["joint_velocity"]: velocity,
         keys["prompt"]: prompt,
     }
 
@@ -204,7 +250,7 @@ def action_layout_sha256(path: str | Path) -> str:
 
 @dataclass(frozen=True, slots=True)
 class AmDp123ActionLayout:
-    """External mapping from a model action vector to the 18-D simulation ABI.
+    """External mapping from a 32-D model action to internal URDF targets.
 
     Attributes:
         schema_version: Layout schema version. Only version ``1`` is supported.
@@ -215,6 +261,8 @@ class AmDp123ActionLayout:
             equal :data:`AM_DP123_PI05_CONTROLLED_JOINT_NAMES`.
         source_indices: One model-action index per simulation joint. ``None`` only while
             the layout is unconfirmed.
+        zero_padding_indices: Model-action entries reserved as zeros and ignored by
+            the simulator.
         scale: Per-joint multiplier from model units to joint position units.
         offset: Per-joint joint-position offset [rad] applied after scaling.
         velocity_scale: Dimensionless fraction of each joint's maximum velocity allowed
@@ -229,6 +277,7 @@ class AmDp123ActionLayout:
     mode: str
     sim_joint_names: tuple[str, ...]
     source_indices: tuple[int, ...] | None
+    zero_padding_indices: tuple[int, ...]
     scale: tuple[float, ...]
     offset: tuple[float, ...]
     velocity_scale: float
@@ -283,8 +332,8 @@ class AmDp123ActionLayout:
             raise ValueError(f"Unsupported action layout mode '{mode}'.")
 
         model_action_dim = int(data.get("model_action_dim", 0))
-        if model_action_dim < 1:
-            raise ValueError("Action layout model_action_dim must be positive.")
+        if model_action_dim != AM_DP123_PI05_MODEL_DIM:
+            raise ValueError(f"AM-DP123 PI0.5 model_action_dim must be {AM_DP123_PI05_MODEL_DIM}.")
 
         raw_names = data.get("sim_joint_names")
         if not isinstance(raw_names, Sequence) or isinstance(raw_names, str):
@@ -310,10 +359,23 @@ class AmDp123ActionLayout:
                 raise ValueError(
                     f"Action layout source_indices must hold {len(sim_joint_names)} entries, got {len(source_indices)}."
                 )
-            if len(set(source_indices)) != len(source_indices):
-                raise ValueError("Action layout source_indices must be unique.")
             if any(index < 0 or index >= model_action_dim for index in source_indices):
                 raise ValueError("Action layout source_indices must fall inside the model action vector.")
+            if source_indices != AM_DP123_PI05_SOURCE_INDICES:
+                raise ValueError("Action layout source_indices do not match the canonical AM-DP123 PI0.5 mapping.")
+
+        raw_padding = data.get("zero_padding_indices", ())
+        if not isinstance(raw_padding, Sequence) or isinstance(raw_padding, str):
+            raise ValueError("Action layout zero_padding_indices must be a list.")
+        zero_padding_indices = tuple(int(index) for index in raw_padding)
+        if len(set(zero_padding_indices)) != len(zero_padding_indices):
+            raise ValueError("Action layout zero_padding_indices must be unique.")
+        if any(index < 0 or index >= model_action_dim for index in zero_padding_indices):
+            raise ValueError("Action layout zero_padding_indices must fall inside the model action vector.")
+        if source_indices is not None and set(source_indices) & set(zero_padding_indices):
+            raise ValueError("Action layout cannot execute a zero-padding entry.")
+        if zero_padding_indices != AM_DP123_PI05_ZERO_PADDING_INDICES:
+            raise ValueError("Action layout zero_padding_indices must be the canonical indices 18 through 31.")
 
         size = len(sim_joint_names)
         velocity_scale = float(data.get("velocity_scale", 1.0))
@@ -327,6 +389,7 @@ class AmDp123ActionLayout:
             mode=mode,
             sim_joint_names=sim_joint_names,
             source_indices=source_indices,
+            zero_padding_indices=zero_padding_indices,
             scale=_as_float_vector(data.get("scale", 1.0), size, "scale"),
             offset=_as_float_vector(data.get("offset", 0.0), size, "offset"),
             velocity_scale=velocity_scale,
@@ -352,14 +415,14 @@ def load_action_layout(path: str | Path) -> AmDp123ActionLayout:
 
 
 def load_default_action_layout() -> AmDp123ActionLayout:
-    """Load the identity 18-D layout used by the mock policies."""
+    """Load the confirmed canonical 32-D PI0.5 layout."""
     return load_action_layout(AM_DP123_PI05_DEFAULT_LAYOUT_PATH)
 
 
 class Pi05ActionAdapter:
     """Map raw model action chunks onto bounded absolute joint targets.
 
-    The adapter selects the 18 simulated joints with the layout's ``source_indices``,
+    The adapter selects internal URDF targets with the layout's ``source_indices``,
     applies ``scale`` and ``offset``, converts to absolute or delta targets, and then
     clamps both position and per-step velocity using the joint contract. It depends only
     on NumPy and the contracts so it can be unit-tested without a simulator.
@@ -444,14 +507,14 @@ class Pi05ActionAdapter:
         return self._last_target.copy()
 
     def adapt(self, actions: object) -> np.ndarray:
-        """Convert a raw model action or chunk into a bounded ``(T, 18)`` target chunk.
+        """Convert a raw model action or chunk into a bounded URDF target chunk.
 
         Args:
             actions: ``(model_action_dim,)`` single action or ``(T, model_action_dim)``
                 chunk in the units described by the action layout.
 
         Returns:
-            Float64 array of shape ``(T, 18)`` with position- and velocity-limited
+            Float64 array of shape ``(T, sim_action_dim)`` with position- and velocity-limited
             targets [rad].
 
         Raises:
@@ -498,9 +561,14 @@ __all__ = [
     "AM_DP123_PI05_DEFAULT_LAYOUT_PATH",
     "AM_DP123_PI05_DELTA_MODE",
     "AM_DP123_PI05_LAYOUT_SCHEMA_VERSION",
+    "AM_DP123_PI05_MODEL_DIM",
+    "AM_DP123_PI05_MODEL_JOINT_NAMES",
     "AM_DP123_PI05_OBSERVATION_KEYS",
     "AM_DP123_PI05_REQUIRED_CAMERAS",
+    "AM_DP123_PI05_REAL_DIM",
+    "AM_DP123_PI05_SOURCE_INDICES",
     "AM_DP123_PI05_STATE_JOINT_NAMES",
+    "AM_DP123_PI05_ZERO_PADDING_INDICES",
     "AmDp123ActionLayout",
     "Pi05ActionAdapter",
     "action_layout_sha256",
@@ -509,5 +577,6 @@ __all__ = [
     "controlled_state_indices",
     "load_action_layout",
     "load_default_action_layout",
+    "to_pi05_model_state",
     "to_uint8_rgb",
 ]

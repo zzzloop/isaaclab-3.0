@@ -102,13 +102,12 @@ def test_package_data_ships_the_action_layouts():
 
 
 def test_shipped_layouts_decode_and_mark_confirmation():
-    """The identity layout is confirmed; the 32-D template is explicitly unconfirmed."""
+    """The canonical 32-D layout is confirmed and carries the reserved padding."""
     layouts = PACKAGE_ROOT / "policy" / "layouts"
-    default = json.loads((layouts / "am_dp123_joint_position_18.json").read_text(encoding="utf-8"))
     template = json.loads((layouts / "am_dp123_pi05_32_template.json").read_text(encoding="utf-8"))
-    assert default["confirmed"] is True and default["model_action_dim"] == 18
-    assert template["confirmed"] is False and template["model_action_dim"] == 32
-    assert template["source_indices"] is None
+    assert template["confirmed"] is True and template["model_action_dim"] == 32
+    assert template["source_indices"] == [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 7, 7, 15, 15, 16, 17]
+    assert template["zero_padding_indices"] == list(range(18, 32))
 
 
 def test_evaluation_script_help_lists_the_policy_contract():

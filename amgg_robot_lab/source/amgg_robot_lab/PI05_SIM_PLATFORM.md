@@ -1,7 +1,8 @@
 # AM-DP123 PI0.5 仿真验证平台使用说明
 
 本文档面向 Ubuntu 22.04、Isaac Sim 6.1、Isaac Lab 3.0 和 `isaaclab30` 环境。平台只使用 AM-DP123
-URDF、四路仿真相机和 18 维关节位置控制，不经过 PICO、Pink IK 或真机通信。
+URDF、四路仿真相机和固定 32 维 PI0.5 接口，不经过 PICO、Pink IK 或真机通信。32 维中只有
+18 维有物理意义，其余 14 维始终为零；18 个物理量在仿真内部展开为 20 个 URDF 目标。
 
 ## 1. 更新代码与进入环境
 
@@ -30,7 +31,7 @@ export ISAACLAB_CXR_ACCEPT_EULA=yes
 
 ## 2. 无头链路冒烟
 
-先运行保持策略，验证 URDF、物理环境、四路相机、23 维状态、动作适配和 episode 写盘：
+先运行保持策略，验证 URDF、物理环境、四路相机、32 维策略状态、动作适配和 episode 写盘：
 
 ```bash
 uv run python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
@@ -90,7 +91,7 @@ uv run python amgg_robot_lab/scripts/am_dp123_pi05_episode.py \
 
 验收会检查：
 
-- 23 维位置/速度、3 维物体位置、18 维执行目标及模型动作 shape；
+- 23 维原始仿真位置/速度、32 维模型动作、20 维 URDF 执行目标及 3 维物体位置 shape；
 - NaN、Inf 和执行关节限位；
 - `inference_valid` 与 `inference_error` 是否一致；
 - JSON 中动作/状态 ABI、步数、模型动作维度和格式版本是否与 NPZ 一致。
@@ -147,7 +148,7 @@ uv run --extra viser python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
     --host 127.0.0.1 \
     --port 8000 \
     --prompt "pick up the orange cube and place it on the green target" \
-    --action_layout amgg_robot_lab/source/amgg_robot_lab/amgg_robot_lab/policy/layouts/<CONFIRMED_LAYOUT>.json \
+    --action_layout amgg_robot_lab/source/amgg_robot_lab/amgg_robot_lab/policy/layouts/am_dp123_pi05_32_template.json \
     --action_horizon 8 \
     --max_steps 1800 \
     --viz viser \
@@ -157,9 +158,19 @@ uv run --extra viser python amgg_robot_lab/scripts/am_dp123_pi05_eval.py \
     --kit_args "--/renderer/multiGpu/enabled=false"
 ```
 
-当前 `am_dp123_pi05_32_template.json` 是未确认模板，`confirmed=false` 且 `source_indices=null`，不能运行。
-必须先确认 PI0.5 的 32 维动作含义，填写 18 个执行关节对应的 `source_indices`，设置正确的
-`absolute_joint_position` 或 `delta_joint_position`、scale、offset，并将 `confirmed` 改为 `true`。
+`am_dp123_pi05_32_template.json` 已按二代机器人契约确认，并且是默认布局；命令可省略
+`--action_layout`。模型侧状态和动作都必须使用下列顺序：
+
+```text
+[left_arm[0:7], left_gripper, right_arm[0:7], right_gripper,
+ head_pan, head_tilt, zero_padding[0:14]]
+```
+
+索引 18–31 的状态由客户端强制写零，动作中的 18–31 完全忽略，不会发给机器人。底盘、腰部和
+夹爪 mimic 关节不占 PI0.5 维度。夹爪标量采用 URDF 主手指角度 [rad]：`0.0` 为张开，
+`-0.32` 为闭合；适配层将一个标量展开为主手指 `q` 和 mimic 手指 `-q`。如果真实数据中的
+`grippers[i].position` 使用电机角度、开口宽度或归一化值，应在 OpenPI 数据 transform 中先换算成
+这个主手指角度，不能在 32 维向量中追加第二根手指。
 
 ## 7. 安全与数据语义
 

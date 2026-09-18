@@ -21,9 +21,8 @@ Added
   pipeline.
 
 * Added ``amgg_robot_lab.policy``: the OpenPI observation payload builder and the
-  ``Pi05ActionAdapter`` safety adapter. The model action dimension is configured by
-  external JSON layouts (an identity 18-D layout plus an explicitly unconfirmed 32-D
-  template) instead of hard-coding the PI0.5 action semantics.
+  ``Pi05ActionAdapter`` safety adapter with the confirmed 32-D PI0.5 state and
+  action contract: 18 physical controls followed by 14 zero-padding entries.
 
 * Added ``scripts/am_dp123_pi05_eval.py`` with ``mock_hold``, ``mock_sine``, and a
   lazily imported ``remote`` OpenPI WebSocket client, plus bounded episode NPZ/JSON
@@ -31,6 +30,10 @@ Added
 
 Fixed
 ^^^^^
+
+* Fixed PI0.5 control to include both head joints and expand each one-dimensional
+  gripper command to its URDF driving and mimic finger targets without exposing
+  mimic joints to the model.
 
 * Fixed the PI0.5 task dependency boundary so importing it no longer loads the
   PICO, Pink IK, or IsaacTeleop stack.
